@@ -39,7 +39,20 @@ gh auth status
 BROWSER_RUNTIME=github-actions npm start
 ```
 
-The recovery branch workflow has accepted a dispatch. Protected Chromium failed to launch in the current managed macOS environment, so local collection requires a host that permits the browser to start. Check the resulting report for browser coverage and use issue #1 to track deployment and reviewer access. [Workflow dispatch](https://github.com/jackiehimel/ai-garage-maintenance-agents/actions/runs/41954209953)
+The same `BROWSER_RUNTIME=github-actions` setting works with `npm run agent`. Protected Chromium cannot launch inside the current managed macOS environment. The remote worker is verified with sandboxed system Chrome and fixed Node 24.22.1. Browser versions are recorded and changed versions make old baselines incompatible. No model credentials are sent to Actions.
+
+## Verified delivery state
+
+All three agents have real runs against Solvd and example.com, successful live assessments, and compatible baseline repeats. The local interface accepts a URL and calls these same agents; a performance run was also completed through its controls. Saved report links use `http://127.0.0.1:4175/?run=<run-id>`. HTML, JSON, baseline and raw-artifact export endpoints were checked against retained evidence. The latest source passes 59 offline tests, type checking and build, including GitHub Actions CI.
+
+| Capability | Verified example |
+| --- | --- |
+| SEO | [Solvd live report collection](https://github.com/jackiehimel/ai-garage-maintenance-agents/actions/runs/41955101165); rendered/sitemap limits remain explicitly partial |
+| Accessibility | [Compatible Solvd repeat](https://github.com/jackiehimel/ai-garage-maintenance-agents/actions/runs/41955296926); ten persistent automated findings, manual-review items kept separate |
+| Performance | [Compatible Solvd repeat](https://github.com/jackiehimel/ai-garage-maintenance-agents/actions/runs/41955116481); three samples, noisy deltas inconclusive |
+| Configured accessibility states | [Live focus, assertion and component mapping](https://github.com/jackiehimel/ai-garage-maintenance-agents/actions/runs/41956039870) |
+
+This is an operating local demo with a remote browser worker. Public deployment and a complete browser-based controlled before/after site fixture remain open in [issue #1](https://github.com/jackiehimel/ai-garage-maintenance-agents/issues/1). Controlled known-change cases are covered by offline tests. No automatic client-site changes are made.
 
 ## Repository boundaries
 
