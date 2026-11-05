@@ -1,7 +1,9 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { validateRequest } from '../src/core/input.js';
-import { browserRequestTarget, chromiumEgressArgs, connectTarget, createBrowserRequestBudget, createDocumentScope, manageBrowserShutdown, pinBrowserConnect, createBrowserFailureDiagnostics, protectRedirects, protectBrowserRoute } from '../src/core/browser.js';
+import http from 'node:http';
+import net from 'node:net';
+import { browserRequestTarget, chromiumEgressArgs, connectTarget, createBrowserRequestBudget, createDocumentScope, manageBrowserShutdown, pinBrowserConnect, createBrowserFailureDiagnostics, protectRedirects, protectBrowserRoute, startBrowserEgress } from '../src/core/browser.js';
 
 test('blocks direct HTTP methods, proxy authorities that could bypass DNS validation, and unauthorized ports', () => {
   assert.throws(() => browserRequestTarget('POST','http://public.example.com/checkout','public.example.com'),/GET|method/i);
@@ -108,4 +110,39 @@ test('both browser interception paths retain blocked request identity without pe
     {method:'POST',url:'https://other.example.com/api',resourceType:'fetch',mainDocument:false,reason:'Browser method blocked'},
   ]);
   assert.deepEqual(messages,['Browser method blocked','Browser method blocked']);
+});
+
+test('the egress proxy retains the identity of requests it refuses, alongside the global reason', async () => {
+  const store = createBrowserFailureDiagnostics();
+  const egress = await startBrowserEgress({recordFailure:store.record});
+  try {
+    const port = Number(new URL(egress.proxyUrl).port);
+    const status = await new Promise<number>((resolve,reject) => {
+      const request = http.request({host:'127.0.0.1',port,method:'POST',path:'http://beacon.example.com/collect?token=hidden#hidden',headers:{host:'beacon.example.com','content-type':'text/plain','content-length':'4'}},(response) => {
+        response.resume();
+        response.on('end',() => resolve(response.statusCode ?? 0));
+      });
+      request.on('error',reject);
+      request.end('body');
+    });
+    assert.equal(status,403);
+    const connectReply = await new Promise<string>((resolve,reject) => {
+      const socket = net.connect({host:'127.0.0.1',port},() => socket.write('CONNECT private.example.com:444 HTTP/1.1\r\nHost: private.example.com:444\r\n\r\n'));
+      let data = '';
+      socket.on('data',chunk => { data += chunk.toString(); });
+      socket.on('close',() => resolve(data));
+      socket.on('error',reject);
+    });
+    assert.match(connectReply,/^HTTP\/1\.1 403/);
+    const retained = store.snapshot();
+    assert.equal(retained.overflow,0);
+    assert.deepEqual(retained.failures,[
+      {method:'POST',url:'http://beacon.example.com/collect',resourceType:'egress',mainDocument:false,reason:'Browser HTTP request bodies are blocked'},
+      {method:'CONNECT',url:'https://private.example.com:444/',resourceType:'egress',mainDocument:false,reason:'Browser CONNECT requires a matching DNS authority on port 443'},
+    ]);
+    const diagnostics = egress.diagnostics();
+    assert.equal(diagnostics.blocked,2);
+    assert.deepEqual(diagnostics.reasons,['Browser HTTP request bodies are blocked','Browser CONNECT requires a matching DNS authority on port 443']);
+    assert.doesNotMatch(JSON.stringify(retained),/hidden|token|#/);
+  } finally { await egress.close(); }
 });

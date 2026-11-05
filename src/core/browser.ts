@@ -80,7 +80,16 @@ export interface BrowserEgressLimits { lifetimeMs: number; requests: number; con
 const EGRESS_LIMITS: BrowserEgressLimits = {
   lifetimeMs:210_000,requests:1200,connections:600,concurrent:70,connectionBytes:22_000_000,totalBytes:140_000_000,dialMs:12_000,
 };
-export interface BrowserEgressOptions { limits?: Partial<BrowserEgressLimits>; resolve?: Resolver; signal?: AbortSignal }
+export interface BrowserEgressOptions {
+  limits?: Partial<BrowserEgressLimits>;
+  resolve?: Resolver;
+  signal?: AbortSignal;
+  // Receives the identity of every request the egress proxy rejected before any
+  // response was established (resourceType 'egress'), so collectors can account
+  // for proxy-level blocks the same way as page-level guard blocks instead of
+  // treating the bare reason string as an unexplained coverage limitation.
+  recordFailure?: (failure: BrowserRequestFailure) => void;
+}
 export interface BrowserEgress {
   chromiumArgs: string[];
   proxyUrl: string;
@@ -152,6 +161,14 @@ export async function startBrowserEgress(options: BrowserEgressOptions = {}): Pr
     const message = error instanceof Error ? error.message : 'Browser egress rejected a request';
     if (reasons.size < 16) reasons.add(message.slice(0,240));
   };
+  // Retain the rejected request's identity alongside the global reason. The
+  // request never left the proxy, so method and target are the only facts known.
+  const rejected = (method: string | undefined, url: string | undefined, error: unknown) => {
+    record(error);
+    const reason = error instanceof Error ? error.message : 'Browser egress rejected a request';
+    try { options.recordFailure?.({method:method ?? 'UNKNOWN',url:url ?? '',resourceType:'egress',mainDocument:false,reason}); }
+    catch { /* Diagnostics must not interfere with rejecting the request. */ }
+  };
   requestBudget.signal.addEventListener('abort',() => record(requestBudget.signal.reason),{once:true});
   const debit = (count: number) => {
     bytes += count;
@@ -197,7 +214,8 @@ export async function startBrowserEgress(options: BrowserEgressOptions = {}): Pr
         res.writeHead(response.status,outgoing);
         await pipeline(response.body,cappedBytes(limits.connectionBytes,debit),res,{signal:requestSignal});
       } catch (error) {
-        record(error);
+        if (res.headersSent) record(error);
+        else rejected(req.method,req.url,error);
         if (!res.headersSent && !res.destroyed) { res.writeHead(403,{'content-type':'text/plain','connection':'close'}); res.end('Browser egress rejected the request'); }
         else res.destroy();
       } finally {
@@ -243,7 +261,8 @@ export async function startBrowserEgress(options: BrowserEgressOptions = {}): Pr
           pipeline(upstream,download,client,{signal}),
         ]);
       } catch (error) {
-        if (!established || (error instanceof Error && /limit|deadline/i.test(error.message))) record(error);
+        if (!established) rejected('CONNECT',req.url ? 'https://' + req.url.replace(/:443$/i,'') : undefined,error);
+        else if (error instanceof Error && /limit|deadline/i.test(error.message)) record(error);
         if (!client.destroyed && !established) client.end('HTTP/1.1 403 Forbidden\r\nConnection: close\r\nContent-Length: 0\r\n\r\n');
       } finally {
         dial.stop();
@@ -418,7 +437,11 @@ export async function openBrowserSession(target: string,options: BrowserOptions)
   const executablePath = options.executablePath ?? module.chromium.executablePath();
   try { await access(executablePath,constants.X_OK); }
   catch (error) { throw new Error('Chromium executable unavailable; install Playwright Chromium or configure a trusted executable path',{cause:error}); }
-  const egress = await startBrowserEgress(options);
+  // One bounded store accounts for guard blocks at every layer: Playwright
+  // routing, CDP interception and the loopback egress proxy, which otherwise
+  // reports only a reason string for requests it refused (e.g. request bodies).
+  const failures = createBrowserFailureDiagnostics();
+  const egress = await startBrowserEgress({...options,recordFailure:(failure) => { failures.record(failure); options.recordFailure?.(failure); }});
   let close = () => egress.close();
   try {
     const browser = await module.chromium.launch({
@@ -433,7 +456,6 @@ export async function openBrowserSession(target: string,options: BrowserOptions)
     context.setDefaultNavigationTimeout(18_000);
     const allowedPages = new Set<Page>();
     const reasons = new Set<string>();
-    const failures = createBrowserFailureDiagnostics();
     const report = (message: string) => { if (reasons.size < 16) reasons.add(message); };
     // The context's CDP-backed events include redirects that Playwright routing
     // does not reinvoke and requests multiplexed over the same CONNECT tunnel.

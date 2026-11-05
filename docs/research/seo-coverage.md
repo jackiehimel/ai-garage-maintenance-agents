@@ -43,6 +43,14 @@ Recommended narrow implementation:
 
 `load` is not a promise that arbitrary asynchronous applications have reached their final state. A general application-readiness redesign is separate work; Playwright explicitly discourages treating `networkidle` as a readiness assertion (Microsoft, n.d.-a).
 
+### Third guard layer: the loopback egress proxy
+
+The permitted Solvd rerun (workflow run 42116455637, `run_0ec98266a344f54c736a8d81`) retained fourteen request identities, every one classified non-content: six POST reporting beacons to the documented Google/DoubleClick collect endpoints, each retained twice (once by the guard that blocked it, once as the page's own `ERR_BLOCKED_BY_CLIENT.Inspector` failure event), plus the hero video (`ERR_ABORTED`) and the exact reporting pixel (`ERR_BLOCKED_BY_ORB`). The rendered title, description, canonical, robots directives and JSON-LD block were captured and matched the source layer. The run still reported `partial` because of one further diagnostic, `Browser HTTP request bodies are blocked`.
+
+That string comes from a third layer the SEO classification did not model: the loopback egress proxy in `src/core/browser.ts` refuses any plain-HTTP request carrying a body before it reads the request target, and until now it retained only the reason string, with no request identity. A request that reaches the proxy with a body did so without being intercepted by routing or CDP (the browser process issues some requests, such as keep-alive beacons after a page closes, outside page interception). Because nothing identified that request, the SEO layer correctly refused to clear the reason, and both rendered coverage rows became incomplete.
+
+Smallest safe change, implemented: the egress proxy now retains the identity (method, origin and path, resource type `egress`, reason) of every request it refuses before a response is established, through the same bounded, redacted store the other guard layers use. A proxy-level refusal is classified as limiting with a precise reason, never as reporting traffic, because the proxy cannot establish the request's purpose; the guard reason is cleared only when it is retained with an identity on that page and every retained failure is non-content. Request protections are unchanged: the proxy still refuses the request. The next permitted rerun will show which request carried the body; only that evidence can justify any further classification.
+
 ## Sitemap diagnosis and smallest safe change
 
 `src/agents/seo.ts` currently assigns membership coverage from all traversal reasons before checking the page's positive membership. A complete accepted URLset can establish that a particular page is listed without fetching unrelated child sitemaps: this is an inference from the protocol's separate `urlset/url/loc` and `sitemapindex/sitemap/loc` semantics (Sitemaps.org, n.d.).

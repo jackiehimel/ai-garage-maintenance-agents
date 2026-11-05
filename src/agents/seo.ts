@@ -37,9 +37,20 @@ interface Renderer {
 type FailedSource = {error: string; redirects: readonly RedirectHop[]; failedUrl?: string; requestFailures?: BrowserFailureDiagnostics};
 type Source = HttpResult | FailedSource;
 
+// Global reason strings the browser guards emit once per session. Each is
+// cleared from a page's limitations only when the same reason is retained with
+// a request identity on that page and every retained failure is non-content.
+const GUARD_REASONS = new Set(['Browser method blocked','Browser HTTP request bodies are blocked']);
+
 function seoFailureImpact(failure: BrowserRequestFailure): {impact:'limiting'|'non-content';reason:string} {
   const limiting = {impact:'limiting' as const,reason:'Unknown content dependency or security failure; rendered metadata coverage remains limited'};
   if (failure.mainDocument) return limiting;
+  // The loopback proxy refuses a request with a body before learning its
+  // purpose; only its method and redacted target are known. Nothing establishes
+  // that it was reporting traffic, so it limits coverage with a precise reason.
+  if (failure.resourceType === 'egress') {
+    return {impact:'limiting',reason:'Egress proxy refused this request before its purpose could be established; rendered metadata coverage remains limited'};
+  }
   const intentionalBlock = failure.reason === 'Browser method blocked' || /^failed: net::ERR_BLOCKED_BY_CLIENT(?:\.Inspector)?$/.test(failure.reason);
   let reporting = false;
   try {
@@ -75,7 +86,9 @@ function seoRequestLimitations(snapshot: Snapshot): string[] {
   const failures = snapshot.requestFailures;
   const impacts = failures?.failures.map(seoFailureImpact) ?? [];
   const fullyAccounted = !!failures && !failures.overflow && failures.failures.length>0 && impacts.every(item=>item.impact === 'non-content');
-  const reasons = snapshot.diagnostics.filter(reason=>reason !== 'Browser method blocked' || !fullyAccounted);
+  // A guard reason without a retained request identity cannot be accounted for.
+  const retainedReasons = new Set(failures?.failures.map(item=>item.reason) ?? []);
+  const reasons = snapshot.diagnostics.filter(reason=>!(GUARD_REASONS.has(reason) && fullyAccounted && retainedReasons.has(reason)));
   if (failures?.overflow) reasons.push('Browser request failure diagnostics truncated');
   if (impacts.some(item=>item.impact === 'limiting')) reasons.push('Browser requests could not be fully inspected');
   return [...new Set(reasons)];
@@ -218,11 +231,13 @@ async function browserRenderer(request: ValidatedRequest, options: CollectorOpti
         if (requestFailures.overflow) diagnostics.add('Browser request failure diagnostics truncated');
         const newGuards = retained.failures.slice(beforeFailures.failures.length);
         for (const entry of browser.diagnostics()) {
-          if (entry === 'Browser method blocked') {
+          if (GUARD_REASONS.has(entry)) {
             const blocks = newGuards.filter(item=>item.reason === entry);
             // Repeated global reason strings are not event counters. Account for
             // every fresh guard record, even when the string existed on a prior page.
-            const matched = seoGuardFailuresAccounted(blocks,observed.failures);
+            // Route/CDP method blocks must also match the page's own failure event;
+            // egress proxy refusals are page-invisible and carry their own identity.
+            const matched = entry === 'Browser method blocked' ? seoGuardFailuresAccounted(blocks,observed.failures) : true;
             if (!requestFailures.overflow && !retained.overflow && blocks.length && matched &&
                 requestFailures.failures.every(item=>seoFailureImpact(item).impact === 'non-content')) continue;
             if (blocks.length && !matched) {

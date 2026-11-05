@@ -320,6 +320,52 @@ test('asset security and unknown errors remain limiting, including ORB outside t
 });
 
 
+test('the protected Solvd trace is complete once every retained block is accounted for, at every guard layer', async () => {
+  // Request identities retained by CI run 42116455637 (run_0ec98266a344f54c736a8d81): reporting
+  // beacons blocked by routing and CDP, the hero video and a reporting pixel. Every one is non-content.
+  const beacon = (url: string,resourceType: string,reason: string) => ({method:'POST',url,resourceType,mainDocument:false,reason});
+  const inspector = 'failed: net::ERR_BLOCKED_BY_CLIENT.Inspector';
+  const failures = [
+    {method:'GET',url:'https://solvd.com/wp-content/uploads/2026/05/Homepage-hero-animation.mp4',resourceType:'media',mainDocument:false,reason:'failed: net::ERR_ABORTED'},
+    beacon('https://analytics.google.com/g/collect','fetch',inspector), beacon('https://stats.g.doubleclick.net/g/collect','ping',inspector),
+    beacon('https://www.google.com/g/collect','fetch',inspector), beacon('https://www.google.com/rmkt/collect/646651083/','fetch',inspector),
+    beacon('https://www.google.com/ccm/collect','fetch',inspector), beacon('https://ad.doubleclick.net/ccm/s/collect','fetch',inspector),
+    {method:'GET',url:'https://ad.doubleclick.net/ccm/s/collect',resourceType:'image',mainDocument:false,reason:'failed: net::ERR_BLOCKED_BY_ORB'},
+    beacon('https://analytics.google.com/g/collect','xhr','Browser method blocked'), beacon('https://stats.g.doubleclick.net/g/collect','ping','Browser method blocked'),
+    beacon('https://www.google.com/g/collect','xhr','Browser method blocked'), beacon('https://www.google.com/rmkt/collect/646651083/','xhr','Browser method blocked'),
+    beacon('https://www.google.com/ccm/collect','xhr','Browser method blocked'), beacon('https://ad.doubleclick.net/ccm/s/collect','xhr','Browser method blocked'),
+  ];
+  const complete = await fixture({requestFailures:{failures,overflow:0},diagnostics:['Browser method blocked']});
+  assert.equal(complete.result.coverage.find(c=>c.subject === 'rendered HTML canonical and indexing directives' && c.scope.page === url)?.status,'complete');
+  assert.equal(complete.result.coverage.find(c=>c.subject === 'rendered JSON-LD parse and type observations' && c.scope.page === url)?.status,'complete');
+
+  // The egress proxy also refused a request with a body. Its reason string alone, without a
+  // retained identity, is not accounted for and keeps rendered coverage incomplete.
+  const unaccounted = await fixture({requestFailures:{failures,overflow:0},diagnostics:['Browser method blocked','Browser HTTP request bodies are blocked']});
+  const unaccountedCoverage = unaccounted.result.coverage.find(c=>c.subject === 'rendered HTML canonical and indexing directives' && c.scope.page === url)!;
+  assert.equal(unaccountedCoverage.status,'incomplete');
+  assert.equal(unaccountedCoverage.reason,'Render had limited coverage: Browser HTTP request bodies are blocked');
+
+  // With the identity retained, the refusal is still a limitation (nothing establishes reporting
+  // traffic for a proxy-level refusal), but the report names the request and the exact reason.
+  // No guard reason is cleared while any retained failure remains limiting.
+  const egress = {method:'POST',url:'http://beacon.example.com/collect',resourceType:'egress',mainDocument:false,reason:'Browser HTTP request bodies are blocked'};
+  const identified = await fixture({requestFailures:{failures:[...failures,egress],overflow:0},diagnostics:['Browser method blocked','Browser HTTP request bodies are blocked']});
+  const identifiedCoverage = identified.result.coverage.find(c=>c.subject === 'rendered HTML canonical and indexing directives' && c.scope.page === url)!;
+  assert.equal(identifiedCoverage.status,'incomplete');
+  assert.equal(identifiedCoverage.reason,'Render had limited coverage: Browser method blocked; Browser HTTP request bodies are blocked; Browser requests could not be fully inspected');
+  const data = identified.result.evidence.find(e=>e.kind === 'seo.rendered-http' && e.scope.page === url)!.data as Record<string,unknown>;
+  const impacts = data.requestFailureImpact as Array<{index:number;impact:string;reason:string}>;
+  assert.ok(impacts.slice(0,failures.length).every(f=>f.impact === 'non-content'));
+  assert.deepEqual(impacts[failures.length],{index:failures.length,impact:'limiting',reason:'Egress proxy refused this request before its purpose could be established; rendered metadata coverage remains limited'});
+
+  // A proxy refusal is never reporting traffic by identity alone, even at a documented endpoint.
+  for (const spoof of [{...egress,url:'https://analytics.google.com/g/collect'},{...egress,url:'https://analytics.google.com/g/collect',reason:'Browser method blocked'}]) {
+    const {result} = await fixture({requestFailures:{failures:[...failures,spoof],overflow:0},diagnostics:['Browser method blocked','Browser HTTP request bodies are blocked']});
+    assert.equal(result.coverage.find(c=>c.subject === 'rendered JSON-LD parse and type observations' && c.scope.page === url)?.status,'incomplete');
+  }
+});
+
 test('observed xhr guard and fetch failure account for the same reporting request', () => {
   const guard = {method:'POST',url:'https://analytics.google.com/g/collect',resourceType:'xhr',mainDocument:false,reason:'Browser method blocked'};
   const observed = {...guard,resourceType:'fetch',reason:'failed: net::ERR_BLOCKED_BY_CLIENT.Inspector'};
