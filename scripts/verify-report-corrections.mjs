@@ -16,7 +16,14 @@ for(const agentId of ['seo-ai-search','accessibility']) {
   await writeFile(`${destination}/${agentId}.html`,renderReport(report));
   assert.equal(report.testedUrl,'https://solvd.com/');
   assert(report.evidence.length>0,'Real collector returned no evidence');
-  if(agentId==='accessibility') accessibilityReport=report;
+  if(agentId==='accessibility') {
+    accessibilityReport=report;
+    const probe=report.measurements?.keyboardProbe?.scopes?.[0];
+    assert(probe,'Default URL-only accessibility run did not record a keyboard sample');
+    assert(probe.steps?.some(step=>step.focus),'Live keyboard sample recorded no focused element');
+    assert(probe.status==='complete'||probe.reason,'Incomplete keyboard sample must explain its limitation');
+    console.log('LIVE_KEYBOARD_SAMPLE '+JSON.stringify(probe));
+  }
   if(agentId==='seo-ai-search') seoStatus=report.collectionStatus;
   const groups=Object.values(report.findings.reduce((groups,f)=>{
     const key=f.rule+':'+f.disposition;
@@ -65,11 +72,17 @@ try {
     const errors=[];page.on('pageerror',error=>errors.push(error.message));
     await page.goto(`http://127.0.0.1:4175/?run=${accessibilityReport.runId}`,{waitUntil:'networkidle'});
     await page.getByRole('heading',{name:'Human checks still needed',exact:true}).waitFor();
+    assert(await page.getByRole('heading',{name:'Keyboard navigation sample',exact:true}).count()>0,'Keyboard sample is missing from report UI');
     assert.equal(await page.locator('#findings h4').count(),new Set(accessibilityReport.findings.map(f=>f.rule+':'+f.disposition)).size);
     assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),'Report overflows viewport');
     await page.locator('#findings').evaluate(element=>element.scrollIntoView({block:'start'}));
     const shot=await page.screenshot({path:`${destination}/${name}.jpg`,type:'jpeg',quality:65});
     if(name==='desktop')console.log('REPORT_SCREENSHOT_BASE64 '+shot.toString('base64'));
+    if(name==='desktop') {
+      await page.getByRole('heading',{name:'Keyboard navigation sample',exact:true}).evaluate(element=>element.scrollIntoView({block:'start'}));
+      const sampleShot=await page.screenshot({path:`${destination}/keyboard-sample.jpg`,type:'jpeg',quality:65});
+      console.log('KEYBOARD_SCREENSHOT_BASE64 '+sampleShot.toString('base64'));
+    }
     assert.deepEqual(errors,[],'Report raised script errors');
     await page.close();
   }

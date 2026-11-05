@@ -7,7 +7,7 @@ const names: Record<AgentId, string> = {
 };
 const limits: Record<AgentId, string> = {
   'seo-ai-search': 'Checks on the tested pages do not establish actual indexing, rankings, traffic, or AI visibility.',
-  accessibility: 'Automated and scripted checks do not establish WCAG conformance. Review the coverage entries for outstanding human evaluation.',
+  accessibility: 'Automated accessibility check. See detected issues, recommended actions and checks that need human review.',
   performance: 'Navigation lab measurements describe this test profile, not real-user experience. Total Blocking Time (TBT) does not measure Interaction to Next Paint (INP).',
 };
 
@@ -92,7 +92,7 @@ export function accessibilityGuidance(rule: string, disposition: Finding['dispos
     },
     'color-contrast': review ? {
       title: 'Check text contrast on the displayed background', owner: 'Designer / QA',
-      happened: 'The scanner could not determine contrast. Overlapping content or a pseudo-element can hide the actual background from the scanner.',
+      happened: 'The scanner could not determine contrast. Inspect each recorded reason, including overlap, pseudo-elements, images, gradients or an unknown background where reported.',
       next: 'Measure the actual displayed foreground and background in the affected state. Change colors only if the contrast fails the threshold for that text size.',
       confirm: 'Record the measured ratio and applicable text-size threshold, then check the affected states again.',
     } : {
@@ -105,7 +105,7 @@ export function accessibilityGuidance(rule: string, disposition: Finding['dispos
       title: 'Check whether videos need captions', owner: 'Content owner',
       happened: 'The scanner could not determine whether these videos require captions.',
       next: 'Check whether each video contains speech or meaningful audio. Provide synchronized captions if required; do not mark silent decorative videos as missing captions.',
-      confirm: 'Play the video and verify that required captions cover the meaningful audio and stay synchronized.',
+      confirm: 'Review caption accuracy, completeness and synchronization with meaningful audio; track presence alone cannot establish a pass or failure.',
     },
     'landmark-unique': {
       title: 'Make navigation areas easy to distinguish', owner: 'Developer',
@@ -158,7 +158,7 @@ function renderAccessibilityFindings(report: AgentReport, evidence: Map<string, 
         ${paragraph(guide.happened)}<p class="meta">${esc(groupLocation(group.instances))}</p>
         <dl>${label('Suggested owner', guide.owner)}${label('Next step', guide.next)}${label('How to confirm', guide.confirm)}</dl>
         <details class="affected-details"><summary>Affected locations and evidence (${group.instances.length})</summary>
-        ${group.instances.map(finding => `<div class="affected-instance">${paragraph(scopeLine(finding.scope))}
+        ${group.instances.map(finding => `<div class="affected-instance">${paragraph(scopeLine(finding.scope))}${finding.disposition === 'review-needed' ? paragraph(finding.investigate) : ''}
           ${referenceLine('Evidence', finding.evidenceIds, evidence)}${referenceLine('Coverage', finding.coverageIds, coverage)}
           <details><summary>Technical details and original scanner text</summary><dl>
             ${label('Finding ID', finding.id)}${label('Rule', finding.rule)}${label('Disposition', finding.disposition)}
@@ -269,6 +269,20 @@ function renderMeasurements(measurements: JsonObject | undefined) {
   return section(title, distributions.join('') + `<details><summary>Complete measurement data</summary>${json(measurements)}</details>`);
 }
 
+function renderKeyboardProbe(report:AgentReport):string {
+  const probe=asObject(report.measurements?.keyboardProbe);
+  const scopes=Array.isArray(probe?.scopes) ? probe.scopes.map(asObject).filter((item):item is JsonObject => !!item) : [];
+  const stops:Record<string,string>={'step-limit':'Sample limit reached',repeat:'Focus sequence repeated','frame-boundary':'Stopped at embedded content','guard-blocked':'Stopped by the read-only guard',timeout:'Time limit reached',aborted:'Sample interrupted',error:'Sample could not finish',unavailable:'Sample unavailable'};
+  return section('Keyboard navigation sample',!scopes.length ? paragraph('No keyboard navigation sample was recorded. Review keyboard order, visible focus and interaction behavior manually.') : scopes.map(scope => {
+    const steps=Array.isArray(scope.steps) ? scope.steps.map(asObject).filter((item):item is JsonObject => !!item) : [];
+    const forward=steps.filter(step => step.key === 'Tab').length;
+    return `<article><h3>${esc(scope.page)} · ${esc(scope.state)}</h3><p>${steps.length} observed focus steps: ${forward} forward, ${steps.length-forward} backward. Status: ${esc(scope.status)} · ${esc(stops[String(scope.termination)] ?? scope.termination)}.</p>
+      <p>We sampled keyboard focus on the initial page. Review the order and visible focus, then test controls and screen-reader behavior.</p>
+      <p>Sample bounds: up to ${esc(scope.forwardLimit)} forward Tabs and ${esc(scope.reverseLimit)} backward Tabs, within 8 seconds.</p>${paragraph(scope.reason)}
+      <details><summary>View recorded focus order</summary><ol class="keyboard-sequence">${steps.map(step => {const focus=asObject(step.focus);return `<li>${esc(step.key === 'Shift+Tab' ? 'Backward' : 'Forward')} · ${esc(focus?.tag ?? 'No focused element')}${focus?.labelHint ? ' · '+esc(focus.labelHint) : ''}${focus ? `<details><summary>Technical focus details</summary>${json(focus)}</details>` : ''}</li>`;}).join('')}</ol></details><details><summary>Sample scope and technical details</summary>${paragraph(scope.scopeLimit)}${paragraph('Elapsed: '+scope.elapsedMs+' ms.')}</details></article>`;
+  }).join(''));
+}
+
 export function renderReport(report: AgentReport): string {
   const evidence = new Map(report.evidence.map((item, index) => [item.id, `evidence-${index + 1}`]));
   const coverage = new Map(report.coverage.map((item, index) => [item.id, `coverage-${index + 1}`]));
@@ -303,8 +317,9 @@ ${section('Run overview', `<details><summary>Run details and coverage</summary><
   ${label('Coverage', `${coverageCount} of ${report.coverage.length} recorded coverage entries marked complete`)}
   ${label('Retention', report.retention.status)}${label('Retention details', report.retention.reason)}
   ${label('Baseline export', report.baseline ? 'Available in the run’s JSON exports.' : report.baselineUnavailableReason)}
-  </dl></details>${paragraph(limits[report.agentId])}`)}
+  </dl></details>${paragraph(limits[report.agentId])}${report.agentId === 'accessibility' ? '<details><summary>What this check covers</summary><p>Automated and scripted checks do not establish WCAG conformance. The bounded keyboard sample does not check every interactive element, widget operation, other states or screen-reader behavior. Review coverage for outstanding human evaluation.</p></details>' : ''}`)}
 ${section('Findings and observations', !report.findings.length ? renderEmptyFindings(report) : report.agentId === 'accessibility' ? renderAccessibilityFindings(report, evidence, coverage) : report.findings.map((item) => renderFinding(item, evidence, coverage)).join(''))}
+${report.agentId === 'accessibility' ? renderKeyboardProbe(report) : ''}
 ${renderComparison(report)}
 ${renderAssessment(report, evidence)}
 ${renderMeasurements(report.measurements)}

@@ -20,7 +20,7 @@ const agents = {
   },
   accessibility: {
     title: 'Accessibility Regression',
-    limit: 'Automated and scripted checks do not establish WCAG conformance. Coverage identifies where human evaluation is still needed.',
+    limit: 'Automated accessibility check. See detected issues, recommended actions and checks that need human review.',
   },
   performance: {
     title: 'Performance Regression',
@@ -259,6 +259,10 @@ function renderOverview(root, report, agent, runPath) {
   ]);
   overview.append(runDetails);
   paragraph(overview, agent.limit, 'meta');
+  if (report.agentId === 'accessibility') {
+    const scope=element('details','supporting-details');scope.append(element('summary','','What this check covers'));
+    paragraph(scope,'Automated and scripted checks do not establish WCAG conformance. The bounded keyboard sample does not check every interactive element, widget operation, other states or screen-reader behavior. Review coverage for outstanding human evaluation.');overview.append(scope);
+  }
   if (report.collectionStatus !== 'complete') {
     paragraph(overview, 'Collection did not finish across the requested scope. Review coverage and diagnostics before interpreting the results.', 'meta');
   }
@@ -326,7 +330,7 @@ function accessibilityGuidance(rule, disposition) {
     },
     'color-contrast': review ? {
       title: 'Check text contrast on the displayed background', owner: 'Designer / QA',
-      happened: 'The scanner could not determine contrast. Overlapping content or a pseudo-element can hide the actual background from the scanner.',
+      happened: 'The scanner could not determine contrast. Inspect each recorded reason, including overlap, pseudo-elements, images, gradients or an unknown background where reported.',
       next: 'Measure the actual displayed foreground and background in the affected state. Change colors only if the contrast fails the threshold for that text size.',
       confirm: 'Record the measured ratio and applicable text-size threshold, then check the affected states again.',
     } : {
@@ -339,7 +343,7 @@ function accessibilityGuidance(rule, disposition) {
       title: 'Check whether videos need captions', owner: 'Content owner',
       happened: 'The scanner could not determine whether these videos require captions.',
       next: 'Check whether each video contains speech or meaningful audio. Provide synchronized captions if required; do not mark silent decorative videos as missing captions.',
-      confirm: 'Play the video and verify that required captions cover the meaningful audio and stay synchronized.',
+      confirm: 'Review caption accuracy, completeness and synchronization with meaningful audio; track presence alone cannot establish a pass or failure.',
     },
     'landmark-unique': {
       title: 'Make navigation areas easy to distinguish', owner: 'Developer',
@@ -437,6 +441,7 @@ function renderFindings(root, report, anchors) {
         for (const finding of group.instances) {
           const instance = element('div', 'affected-instance');
           paragraph(instance, scopeText(finding.scope));
+          if (finding.disposition === 'review-needed') paragraph(instance, finding.investigate);
           referenceLine(instance, 'Evidence', finding.evidenceIds, anchors.evidence);
           referenceLine(instance, 'Coverage', finding.coverageIds, anchors.coverage);
           const technical = element('details', 'report-data');
@@ -528,6 +533,32 @@ function renderAssessment(root, assessment, evidence) {
     paragraph(card, action.rationale);
     itemList(card, action.steps, true);
     referenceLine(card, 'Supporting evidence', action.evidenceIds, evidence);
+  }
+}
+
+function renderKeyboardProbe(root, report) {
+  if (report.agentId !== 'accessibility') return;
+  const panel=section(root,'keyboard-sample','Keyboard navigation sample');
+  const stops={'step-limit':'Sample limit reached',repeat:'Focus sequence repeated','frame-boundary':'Stopped at embedded content','guard-blocked':'Stopped by the read-only guard',timeout:'Time limit reached',aborted:'Sample interrupted',error:'Sample could not finish',unavailable:'Sample unavailable'};
+  const scopes=report.measurements?.keyboardProbe?.scopes;
+  if (!Array.isArray(scopes) || !scopes.length) {paragraph(panel,'No keyboard navigation sample was recorded. Review keyboard order, visible focus and interaction behavior manually.');return;}
+  for (const scope of scopes) {
+    const card=entry(panel,`${scope.page} · ${scope.state}`);
+    const steps=Array.isArray(scope.steps) ? scope.steps : [];
+    const forward=steps.filter(step => step.key === 'Tab').length;
+    paragraph(card,`${steps.length} observed focus steps: ${forward} forward, ${steps.length-forward} backward. Status: ${scope.status} · ${stops[scope.termination] ?? scope.termination}.`);
+    paragraph(card,'We sampled keyboard focus on the initial page. Review the order and visible focus, then test controls and screen-reader behavior.');
+    paragraph(card,`Sample bounds: up to ${scope.forwardLimit} forward Tabs and ${scope.reverseLimit} backward Tabs, within 8 seconds.`);paragraph(card,scope.reason);
+    const sequence=element('ol','keyboard-sequence');
+    for(const step of steps) {
+      const focus=step.focus;
+      const item=element('li','',`${step.key === 'Shift+Tab' ? 'Backward' : 'Forward'} · ${focus?.tag ?? 'No focused element'}${focus?.labelHint ? ' · '+focus.labelHint : ''}`);
+      if(focus) rawData(item,'Technical focus details',focus);
+      sequence.append(item);
+    }
+    const order=element('details','supporting-details');order.append(element('summary','','View recorded focus order'),sequence);card.append(order);
+    const technical=element('details','supporting-details');technical.append(element('summary','','Sample scope and technical details'));
+    paragraph(technical,scope.scopeLimit);paragraph(technical,`Elapsed: ${scope.elapsedMs} ms.`);card.append(technical);
   }
 }
 
@@ -633,7 +664,7 @@ function renderReport(report) {
   const nav = element('nav', 'report-nav');
   nav.setAttribute('aria-label', 'Report sections');
   for (const [id, text] of [
-    ['findings', 'Findings'], ['comparison', 'Comparison'], ['assessment', 'AI assessment'], ['measurements', 'Measurements'],
+    ['findings', 'Findings'], ...(report.agentId === 'accessibility' ? [['keyboard-sample','Keyboard sample']] : []), ['comparison', 'Comparison'], ['assessment', 'AI assessment'], ['measurements', 'Measurements'],
     ['coverage', 'Coverage'], ['evidence', 'Evidence'], ['diagnostics', 'Diagnostics'], ['artifacts', 'Raw artifacts'],
     ['run-configuration', 'Configuration'],
   ]) {
@@ -645,6 +676,7 @@ function renderReport(report) {
   renderFindings(root, report, anchors);
   renderComparison(root, report.comparison);
   renderAssessment(root, report.assessment, anchors.evidence);
+  renderKeyboardProbe(root, report);
   renderMeasurements(root, report.measurements);
   renderEvidence(root, report, anchors);
   renderRunDetails(root, report, anchors, runPath);

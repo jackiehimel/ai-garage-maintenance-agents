@@ -3,6 +3,8 @@ import { setTimeout as delay } from 'node:timers/promises';
 import { AxeBuilder } from '@axe-core/playwright';
 import type { AxeResults, NodeResult, Result } from 'axe-core';
 import type { Page, Request } from 'playwright';
+import { collectKeyboardProbe, KEYBOARD_SAMPLE_LIMIT } from './accessibility-probe.js';
+import type { KeyboardProbe } from './accessibility-probe.js';
 import { openBrowserSession } from '../core/browser.js';
 import type { BrowserSession } from '../core/browser.js';
 import { canonicalJson, createEvidence, createFinding } from '../core/evidence.js';
@@ -50,6 +52,7 @@ export interface AccessibilityScan {
   navigation:{status:'complete' | 'incomplete' | 'unavailable';testedUrl?:string;httpStatus?:number;reason?:string};
   readiness?:{status:'complete' | 'incomplete';reason?:string;data?:JsonObject};
   keyboard?:{status:'complete' | 'incomplete';steps:KeyboardObservation[];reason?:string};
+  keyboardProbe?:KeyboardProbe;
   axe?:AxeResults;
   axeReason?:string;
   components?:ComponentSnapshot;
@@ -89,10 +92,28 @@ function elementIdentity(target:NodeResult['target']):string {
   return value.length <= 2000 ? (value || '(document)') : value.slice(0,1960) + '… [' + hash(target) + ']';
 }
 
+function boundedCheckData(value:unknown,depth=0):JsonValue {
+  if (value == null) return null;
+  if (typeof value === 'string') return clean(value,700);
+  if (typeof value === 'boolean') return value;
+  if (typeof value === 'number') return Number.isFinite(value) ? value : null;
+  if (depth >= 3) return '[additional context retained in raw axe JSON]';
+  if (Array.isArray(value)) return value.slice(0,6).map(item => boundedCheckData(item,depth+1));
+  if (typeof value === 'object') return Object.fromEntries(Object.entries(value).slice(0,8).map(([key,item]) => [clean(key,100),boundedCheckData(item,depth+1)]));
+  return null;
+}
 function observedChecks(node:NodeResult):JsonObject {
-  return Object.fromEntries((['any','all','none'] as const).map((kind) => [kind,node[kind].slice(0,3).map((check) => ({
-    id:clean(check.id,120),message:clean(check.message,220),
+  return Object.fromEntries((['any','all','none'] as const).map((kind) => [kind,node[kind].slice(0,6).map((check) => ({
+    id:clean(check.id,120),message:clean(check.message,700),data:boundedCheckData(check.data),
+    relatedNodes:(check.relatedNodes ?? []).slice(0,4).map(related => ({target:boundedCheckData(related.target),html:clean(related.html,500)})),
   }))]));
+}
+function reviewAction(rule:Result,node:NodeResult|undefined,summary:string):string {
+  const reasons=node ? [...node.any,...node.all,...node.none].map(check => check.message).filter(Boolean).slice(0,6).join(' ') : summary;
+  const recorded='Recorded reason: '+clean(reasons || summary,1200)+' ';
+  if(rule.id === 'color-contrast') return recorded+'Use the recorded cause and related-node context to identify the affected layers. Measure the actual displayed foreground and background across the affected text and states; record the measured ratio and applicable text-size threshold. The scanner did not supply a determinate ratio.';
+  if(rule.id === 'video-caption') return recorded+'Inspect whether the video contains speech or meaningful audio, then review caption accuracy, completeness and synchronization. A captions track alone does not establish a pass or failure.';
+  return recorded+'Inspect this instance using the recorded check data, related nodes and linked rule guidance: '+clean(rule.helpUrl,500);
 }
 
 function recheckState(scope:ScanScope):string {
@@ -245,6 +266,14 @@ export function assembleAccessibilityResult(
       }
     }
 
+    if (!state) {
+      const probe = scan.keyboardProbe;
+      cover('Sampled keyboard navigation',probe?.status ?? 'unavailable',probe?.reason ?? (probe ? undefined : 'No keyboard navigation sample was recorded.'),
+        {observedSteps:probe?.steps.length ?? 0,scopeLimit:probe?.scopeLimit ?? KEYBOARD_SAMPLE_LIMIT});
+      if (probe) result.evidence.push(createEvidence({agentId:AGENT,kind:'keyboard-probe',scope,
+        summary:'Keyboard navigation sample: '+probe.steps.length+' observed focus steps; '+probe.status+'. '+(probe.reason ?? probe.scopeLimit),
+        source:{kind:'measured',name:'Protected Playwright Tab-only sample'},data:JSON.parse(JSON.stringify(probe)) as JsonObject}));
+    }
     const componentId = cover('Explicit component mapping',
       !request.components.length ? 'not-configured' : scan.components ? (Object.values(scan.components.counts).some((count) => count === null) ? 'incomplete' : 'complete') : 'unavailable',
       !request.components.length ? 'No component selectors were configured.' :
@@ -321,7 +350,7 @@ export function assembleAccessibilityResult(
             title:safeText(rule.help,275,rule.id),summary,severity:severity(impact,manual),ownerPriority:owner.get(rule.id),
             disposition:manual ? 'review-needed' : 'finding',evidenceIds:[evidence.id],
             coverageIds:[navigationId,readinessId,...(pathId ? [pathId] : []),axeId,...(component ? [componentId] : [])],
-            investigate:manual ? 'Use the axe evidence and linked rule guidance to verify this instance manually.' : guidance.investigate,
+            investigate:manual ? reviewAction(rule,node,summary) : guidance.investigate,
             correct:manual ? 'Change the implementation only after review confirms an accessibility barrier.' : guidance.correct,
             recheck:'Repeat the axe scan in ' + recheckState(scope) + ' and verify the relevant behavior manually.',
           }));
@@ -338,6 +367,7 @@ export function assembleAccessibilityResult(
     }));
   }
   result.measurements = {
+    keyboardProbe:{version:1,scopes:scans.filter(scan => scan.scope.state === 'initial' && scan.keyboardProbe).map(scan => ({page:scan.scope.page,state:scan.scope.state,...JSON.parse(JSON.stringify(scan.keyboardProbe)) as JsonObject}))},
     automationLimit:AUTOMATION_LIMIT,requestedScopes:request.pages.length + request.states.length,
     suppliedHumanReviews:request.supplied?.humanReviews?.length ?? 0,
   };
@@ -356,11 +386,12 @@ export function activationPermitted(target:ActivationTarget | null):boolean {
 }
 
 interface GuardReading {blocked:number;focus:Focus | null;activationAllowed:boolean}
-interface ReadOnlyGuard {read():GuardReading}
+interface ReadOnlyGuard {read():GuardReading;seal():void}
 
 /** This fixed collector script runs before page scripts; no script text is accepted in configuration. */
 function installReadOnlyGuard(key:string, permits:typeof activationPermitted):void {
   let blocked = 0;
+  let sealed = false;
   const handlers = {
     deny(event?:Event) {
       blocked++;
@@ -413,7 +444,24 @@ function installReadOnlyGuard(key:string, permits:typeof activationPermitted):vo
           !permits(handlers.targetInfo(event.composedPath()[0] ?? null))) handlers.deny(event);
     },true);
   }
+  // Seal scripted popup, dialog, synthetic click and same-document navigation before sampling.
+  const nativeOpen = window.open;
+  Object.defineProperty(window,'open',{configurable:false,writable:false,value:function(...args:Parameters<typeof window.open>) {if(sealed) {handlers.deny();return null;}return nativeOpen.apply(window,args);}});
+  for (const name of ['alert','confirm','prompt'] as const) {
+    const original=window[name]?.bind(window);
+    if (!original) continue;
+    Object.defineProperty(window,name,{configurable:false,writable:false,value:(...args:unknown[]) => {if(sealed) {handlers.deny();return name === 'confirm' ? false : null;}return Reflect.apply(original,window,args);}});
+  }
+  window.addEventListener('click',event => {if(sealed) handlers.deny(event);},true);
+  for (const name of ['pushState','replaceState'] as const) {
+    if (typeof history === 'undefined') break;
+    const original=history[name].bind(history);
+    Object.defineProperty(history,name,{configurable:false,writable:false,value:(...args:Parameters<History[typeof name]>) => {if(sealed) {handlers.deny();return;}return Reflect.apply(original,history,args);}});
+  }
+  const navigation=Reflect.get(window,'navigation') as EventTarget|undefined;
+  navigation?.addEventListener('navigate',event => {if(sealed && event.cancelable) handlers.deny(event);});
   Object.defineProperty(window,key,{configurable:false,writable:false,value:Object.freeze({
+    seal() {sealed=true;},
     read() {
       const target = handlers.active();
       return {blocked,focus:handlers.focusLabel(target),activationAllowed:permits(handlers.targetInfo(target))};
@@ -680,14 +728,25 @@ async function captureScope(
   }
   signal.throwIfAborted();
   const axe = await new AxeBuilder({page}).options({resultTypes:['violations','incomplete']}).analyze();
+  scan.axe = axe;
   if (!sameDocumentUrl(opened.href,page.url()) || blockedRequests || (await readGuard(page,guardKey)).blocked !== guard.blocked) {
     scan.axeReason = 'The page attempted a blocked request or form action, or changed documents during the axe scan.';
+    scan.readiness={status:'incomplete',reason:scan.axeReason,data:scan.readiness?.data};
     if (scan.keyboard) scan.keyboard = {...scan.keyboard,status:'incomplete',reason:scan.axeReason};
     return;
   }
   updateReadiness();
-  scan.axe = axe;
-  if (components.length) scan.components = await mapComponents(page,components,axe);
+  if (!state) scan.keyboardProbe={status:'unavailable',steps:[],termination:'unavailable',forwardLimit:40,reverseLimit:10,elapsedMs:0,scopeLimit:KEYBOARD_SAMPLE_LIMIT,reason:'The scope ended before the keyboard sample could run.'};
+  if (components.length) {
+    try {scan.components = await mapComponents(page,components,axe);}
+    catch (error) {scan.components={counts:Object.fromEntries(components.map(component => [component.id,null])),mappings:[],limitations:[note(error)]};}
+  }
+  if (!state) {
+    sealed = true;
+    await page.evaluate(name => {const guard=Reflect.get(window,name) as ReadOnlyGuard;guard.seal();},guardKey);
+    scan.keyboardProbe = await collectKeyboardProbe(page,{signal,readGuard:() => readGuard(page,guardKey),getBlockedRequests:() => blockedRequests,
+      getBlockedReason:() => 'The read-only guard blocked a form, action, navigation or new request during the sample. This limits interaction coverage; it is not an accessibility finding.'});
+  }
 }
 
 /** Collect measured accessibility evidence from the requested public pages and keyboard states. */
@@ -747,3 +806,4 @@ export async function collectAccessibility(request:ValidatedRequest,options:Coll
   }
   return assembleAccessibilityResult(request,runtime,testedUrl,scans,diagnostics);
 }
+

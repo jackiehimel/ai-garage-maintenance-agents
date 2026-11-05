@@ -209,3 +209,57 @@ test('moving a still-violating element to another configured component cannot re
   assert.equal(changes.find(({before}) => before?.scope.component === 'header')?.status,'inconclusive');
   assert.equal(changes.find(({after}) => after?.scope.component === 'footer')?.status,'inconclusive');
 });
+
+
+test('retains recorded review reasons, bounded check data and related nodes without resolving them', () => {
+  const reviewNode = node('#contrast');
+  reviewNode.any = [{id:'color-contrast',message:'Background image prevents contrast determination.',data:{reason:'background-image',sample:'x'.repeat(9000)},relatedNodes:[{target:['#image'],html:'<img src="background.png">'}],impact:'serious'}];
+  const raw = axe([], [rule('color-contrast',[reviewNode]),rule('video-caption',[node('#video')])]);
+  const result = assembleAccessibilityResult(request,runtime,page,[initial(raw)]);
+  const evidence = result.evidence.find(item => item.kind === 'axe-review' && (item.data as {rule:string}).rule === 'color-contrast')!;
+  const check = (evidence.data as {checks:{any:Array<{data:unknown;relatedNodes:unknown[]}>}}).checks.any[0];
+  assert.ok(check.data);
+  assert.equal(check.relatedNodes.length,1);
+  assert.ok(JSON.stringify(check.data).length < 4000);
+  assert.match(result.findings.find(item => item.rule === 'color-contrast')!.investigate!,/Background image/);
+  assert.match(result.findings.find(item => item.rule === 'color-contrast')!.investigate!,/displayed.*foreground.*background/);
+  assert.match(result.findings.find(item => item.rule === 'video-caption')!.investigate!,/meaningful audio/);
+  assert.equal(result.findings.filter(item => item.disposition === 'review-needed').length,2);
+  assert.deepEqual(JSON.parse(String(result.artifacts[0].bytes)),raw);
+});
+
+test('a stopped keyboard sample preserves prior axe findings, raw output and scan coverage', () => {
+  const raw=axe([rule('button-name',[node('#broken')])]);
+  const original=initial(raw);
+  original.keyboardProbe={status:'incomplete',steps:[],reason:'Blocked navigation',termination:'guard-blocked',forwardLimit:40,reverseLimit:10,elapsedMs:3,scopeLimit:'Bounded sample'};
+  const result=assembleAccessibilityResult(request,runtime,page,[original]);
+  assert.equal(result.findings[0].rule,'button-name');
+  assert.equal(result.coverage.find(item=>item.subject==='axe-core scan')?.status,'complete');
+  assert.equal(result.coverage.filter(item=>item.subject==='Sampled keyboard navigation').length,1);
+  assert.equal(result.coverage.find(item=>item.subject==='Sampled keyboard navigation')?.status,'incomplete');
+  assert.deepEqual(JSON.parse(String(result.artifacts[0].bytes)),raw);
+  assert.equal(result.evidence.find(item=>item.kind==='keyboard-probe')?.source.kind,'measured');
+  assert.equal((result.measurements?.keyboardProbe as {scopes:unknown[]}).scopes.length,1);
+});
+
+test('sealed action guard prevents popup, dialog, history and cancelable navigation before page handlers', () => {
+  const window = new EventTarget();
+  const navigation = new EventTarget();
+  let effects = 0;
+  Object.assign(window,{open:()=>{effects++;},alert:()=>{effects++;},confirm:()=>{effects++;},prompt:()=>{effects++;},navigation});
+  const history={pushState:()=>{effects++;},replaceState:()=>{effects++;}};
+  class Form {submit() {effects++;}requestSubmit() {effects++;}}
+  runInNewContext(publicAccessibilityGuardScript('sealedGuard'),{window,document:{activeElement:null},HTMLFormElement:Form,history});
+  const guard=Reflect.get(window,'sealedGuard') as {seal():void;read():{blocked:number}};
+  guard.seal();
+  for(const name of ['open','alert','confirm','prompt']) Reflect.get(window,name)();
+  history.pushState();history.replaceState();
+  const navigate=new Event('navigate',{cancelable:true});
+  navigation.addEventListener('navigate',()=>{effects++;});
+  assert.equal(navigation.dispatchEvent(navigate),false);
+  const click=new Event('click',{cancelable:true});
+  window.addEventListener('click',()=>{effects++;});
+  assert.equal(window.dispatchEvent(click),false);
+  assert.equal(effects,0);
+  assert.equal(guard.read().blocked,8);
+});

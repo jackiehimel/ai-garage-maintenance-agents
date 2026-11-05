@@ -210,3 +210,25 @@ test('zero findings distinguish failed and complete scans and keep live/export w
     assert.match(empty.text, /does not mean the site is clean/);
   }
 });
+
+test('accessibility HTML gives a readable escaped keyboard sample and keeps old reports honest', () => {
+  const a11y = {...report,agentId:'accessibility' as const,findings:[],measurements:{keyboardProbe:{version:1,scopes:[{
+    page:'https://example.com/',state:'initial',status:'incomplete',termination:'frame-boundary',forwardLimit:40,reverseLimit:10,elapsedMs:12,
+    scopeLimit:'Tab-only bounded sample; widget activation and screen-reader behavior require human review.',reason:'Stopped at a frame boundary.',
+    steps:[{index:1,key:'Tab',focus:{tag:'button',selector:'#unsafe',labelHint:'<img src=x onerror=alert(1)>',rect:{x:0,y:0,width:10,height:10}}},
+      {index:2,key:'Shift+Tab',focus:{tag:'a',selector:'#back',labelHint:'Back',rect:{x:0,y:0,width:10,height:10}}}],
+  }]}}};
+  const document = parse(exporter.renderReport(a11y));
+  assert.match(document.text,/Keyboard navigation sample/);
+  assert.match(document.text,/Forward.*button/);
+  assert.match(document.text,/Backward.*Back/);
+  assert.match(document.text,/Stopped at a frame boundary/);
+  assert.match(document.text,/Stopped at embedded content/);
+  assert.ok(document.querySelectorAll('details').some(item => item.querySelector('summary')?.text === 'View recorded focus order'));
+  assert.match(document.text,/We sampled keyboard focus on the initial page/);
+  assert.match(document.text,/40.*10/);
+  assert.match(document.text,/What this check covers/);
+  assert.match(document.text,/Automated accessibility check\. See detected issues/);
+  assert.equal(document.querySelectorAll('img, script').length,0);
+  assert.match(parse(exporter.renderReport({...a11y,measurements:undefined})).text,/No keyboard navigation sample was recorded/);
+});

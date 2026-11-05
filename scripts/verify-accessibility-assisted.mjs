@@ -1,0 +1,50 @@
+import assert from 'node:assert/strict';
+import {chromium} from 'playwright';
+import {collectKeyboardProbe} from '../dist/app/agents/accessibility-probe.js';
+import {publicAccessibilityGuardScript} from '../dist/app/agents/accessibility.js';
+
+const browser=await chromium.launch({executablePath:process.env.CHROME_PATH,headless:true,chromiumSandbox:true});
+try {
+  async function fixture(name,html,check) {
+    const context=await browser.newContext({serviceWorkers:'block'});
+    const page=await context.newPage();
+    let blocked=0;
+    await context.route('**/*',async route=>{blocked++;await route.abort('blockedbyclient');});
+    try {
+      await page.setContent(html,{waitUntil:'load'});
+      await page.evaluate(publicAccessibilityGuardScript('fixtureGuard'));
+      await page.evaluate(()=>window.fixtureGuard.seal());
+      const result=await collectKeyboardProbe(page,{
+        signal:AbortSignal.timeout(10_000),
+        readGuard:()=>page.evaluate(()=>window.fixtureGuard.read()),
+        getBlockedRequests:()=>blocked,
+        getBlockedReason:()=>blocked?'Fixture prevented an outbound request':undefined,
+      });
+      await check(result,page,()=>blocked);
+      console.log('ASSISTED_FIXTURE_VERIFIED '+JSON.stringify({name,status:result.status,termination:result.termination,steps:result.steps.length}));
+    } finally {await context.close();}
+  }
+  await fixture('forward-reverse-and-wrap','<button id="a">Alpha</button><button id="b">Beta</button><button id="c">Gamma</button>',async result=>{
+    assert.equal(result.status,'complete');
+    assert(result.steps.some(s=>s.key==='Shift+Tab'),'Reverse keyboard traversal missing');
+    for(const id of ['a','b','c'])assert(result.steps.some(s=>s.focus?.selector==='#'+id),'Expected focus target '+id);
+    assert(result.steps.length<=50);assert(result.elapsedMs<10_000);
+  });
+  await fixture('repeated-focus-is-observation','<button id="a" onkeydown="if(event.key===\'Tab\')event.preventDefault()">Repeated focus</button><button id="b">Other control</button>',async result=>{
+    assert(result.steps.length<=50);assert(result.steps.some(s=>s.focus?.selector==='#a'));
+    assert.equal(result.findings,undefined,'Probe must not invent confirmed WCAG failures');
+  });
+  await fixture('open-shadow-focus','<div id="host"></div><script>const r=document.getElementById("host").attachShadow({mode:"open"});r.innerHTML="<button id=shadow-button>Shadow button</button>";</script><button>After shadow</button>',async result=>{
+    assert(result.steps.some(s=>s.focus?.inShadow),'Open shadow focus was not recorded');
+  });
+  await fixture('frame-boundary','<button>Before frame</button><iframe title="Embedded content" srcdoc="<button>Inside frame</button>"></iframe><button>After frame</button>',async result=>{
+    assert.equal(result.status,'incomplete');assert(result.steps.some(s=>s.focus?.frameBoundary),'Frame boundary was not recorded');
+  });
+  await fixture('focus-triggered-navigation','<button onfocus="location.href=\'https://fixture.invalid/not-allowed\'">Navigation attempt</button>',async(result,page,getBlocked)=>{
+    const guard=await page.evaluate(()=>window.fixtureGuard.read());
+    assert.equal(result.status,'incomplete');assert(getBlocked()>0||guard.blocked>0);assert.equal(page.url(),'about:blank');
+  });
+  await fixture('focus-triggered-form','<form id="form" action="https://fixture.invalid/not-allowed"><button type="button" onfocus="document.getElementById(\'form\').requestSubmit()">Submit attempt</button></form>',async(result,page,getBlocked)=>{
+    assert.equal(result.status,'incomplete');assert.equal(getBlocked(),0,'Form guard must prevent network submission');assert.equal(page.url(),'about:blank');
+  });
+} finally {await browser.close();}
