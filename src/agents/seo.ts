@@ -164,9 +164,21 @@ interface Site {
 function acceptedOrigin(candidate: string, origin: string): boolean {
   try { return parsePublicTarget(candidate).origin === origin; } catch { return false; }
 }
-async function fetchSite(client: PublicHttpClient, origin: string): Promise<Site> {
+async function fetchSite(
+  client: PublicHttpClient,
+  origin: string,
+  alias?: {origin: string; site: Promise<Site>},
+): Promise<Site> {
   const robotsUrl = new URL('/robots.txt',origin).href;
   const robots = await fetchSource(client,robotsUrl,origin,false);
+  if (alias && 'error' in robots && robots.redirects.length && robots.failedUrl === new URL('/robots.txt',alias.origin).href) {
+    // Reuse the independently pinned response only for the exact file named by
+    // the robots redirect, after a main-page navigation verified this alias.
+    const canonical = await alias.site;
+    if (!('error' in canonical.robots)) {
+      return {...canonical,robotsUrl,robots:{...canonical.robots,redirects:[...robots.redirects,...canonical.robots.redirects]}};
+    }
+  }
   let robotStatus: CoverageStatus;
   let robotReason: string | undefined;
   let rules: ReturnType<typeof readRobots> | undefined;
@@ -330,11 +342,7 @@ export async function collectSeoEvidence(
   const sources = Promise.all(request.pages.map(({url}) => url === request.targetUrl ? first :
     fetchSource(client,url,origin,canonicalOrigin !== origin)));
   const sourceSites = new Map<string,Promise<Site>>();
-  const siteFor = (siteOrigin: string) => {
-    if (!sourceSites.has(siteOrigin)) sourceSites.set(siteOrigin,fetchSite(client,siteOrigin));
-    return sourceSites.get(siteOrigin)!;
-  };
-  void siteFor(canonicalOrigin);
+  if (canonicalOrigin !== origin) sourceSites.set(canonicalOrigin,fetchSite(client,canonicalOrigin));
   const rendered = await start;
   const renders: (Snapshot | FailedSource)[] = [];
   const sourceResults = await sources;
@@ -348,6 +356,18 @@ export async function collectSeoEvidence(
       }
     }
   } finally { if ('renderer' in rendered) await rendered.renderer.close(); }
+  const renderedFirst = renders[0];
+  const confirmedRender = renderedFirst && 'url' in renderedFirst && renderedFirst.finalConfirmed !== false ? renderedFirst : undefined;
+  const renderedOrigin = confirmedRender ? new URL(confirmedRender.url).origin : origin;
+  const aliasOrigin = canonicalOrigin !== origin ? canonicalOrigin : renderedOrigin !== origin ? renderedOrigin : undefined;
+  const siteFor = (siteOrigin: string): Promise<Site> => {
+    const cached = sourceSites.get(siteOrigin);
+    if (cached) return cached;
+    const alias = siteOrigin === origin && aliasOrigin ? {origin:aliasOrigin,site:siteFor(aliasOrigin)} : undefined;
+    const site = fetchSite(client,siteOrigin,alias);
+    sourceSites.set(siteOrigin,site);
+    return site;
+  };
 
   for (const [index,page] of request.pages.entries()) {
     const scope = {page:page.url};
@@ -428,9 +448,10 @@ export async function collectSeoEvidence(
       robotsReasons.join('; ') || undefined);
     const robotsArtifacts = robotSites.flatMap(item => {
       if ('error' in item.robots || !item.rules) return [];
-      const id = 'art_' + digest({agentId,kind:'robots',url:item.robotsUrl});
-      if (!artifacts.has(id)) artifacts.set(id,{id,label:`Robots policy sample: ${new URL(item.robotsUrl).hostname}`,mediaType:'text/plain',
-        bytes:item.robots.body.subarray(0,ROBOTS_BYTES),scope:{page:item.robotsUrl}});
+      const artifactUrl = item.robots.url;
+      const id = 'art_' + digest({agentId,kind:'robots',url:artifactUrl});
+      if (!artifacts.has(id)) artifacts.set(id,{id,label:`Robots policy sample: ${new URL(artifactUrl).hostname}`,mediaType:'text/plain',
+        bytes:item.robots.body.subarray(0,ROBOTS_BYTES),scope:{page:artifactUrl}});
       return [id];
     });
     const robotsEvidence = addEvidence(scope,'seo.robots-policy','DNS-pinned public HTTP','Robots policy for selected crawler user agents',{
@@ -442,7 +463,7 @@ export async function collectSeoEvidence(
         malformedRecords:item.rules?.malformed ?? null,sitemapDeclarations:item.rules?.sitemaps.slice(0,8) ?? [],
       })),
       caveat:'Observed rules and selected crawler tokens only. Access rules do not establish indexing or AI visibility.',
-    },robotsArtifacts.length ? robotsArtifacts : undefined);
+    },robotsArtifacts.length ? [...new Set(robotsArtifacts)] : undefined);
     const blocked = [...new Set(robotObservations.flatMap(({item,results}) => item.robotStatus !== 'complete' ? [] :
       results.filter(x => x.decision === 'disallowed' && SEARCH_CRAWLERS.some(a => a === x.agent)).map(x => x.agent)))];
     if (blocked.length) {
@@ -456,7 +477,7 @@ export async function collectSeoEvidence(
     }
 
     const sitemapReasons = [...new Set(robotSites.flatMap(item => item.sitemapReasons))];
-    const sitemapDocuments = robotSites.flatMap(item => item.maps);
+    const sitemapDocuments = [...new Set(robotSites.flatMap(item => item.maps))];
     const sitemapStatus = sitemapReasons.length ? (sitemapDocuments.length && sitemapDocuments.every(x => 'error' in x.result) ? 'unavailable' : 'incomplete') : 'complete';
     const sitemapCoverage = addCoverage(scope,'sampled sitemap membership',sitemapStatus,sitemapReasons.join('; ') || undefined);
     const lookup = new Set([page.url,source.url,render.url].filter((url): url is string => Boolean(url)).map(url => normalizedHttpUrl(url)).filter((url): url is string => Boolean(url)));
@@ -533,9 +554,8 @@ export async function collectSeoEvidence(
     addCoverage({page:url},'owner-supplied Search Console evidence',count ? 'complete' : 'not-configured',
       count ? undefined : 'No Search Console evidence supplied for this page',count ? {records:count} : undefined);
   }
-  const renderedFirst = renders[0];
   return {
-    testedUrl:renderedFirst && 'url' in renderedFirst && renderedFirst.finalConfirmed !== false ? renderedFirst.url : 'url' in first ? first.url : request.targetUrl,
+    testedUrl:confirmedRender ? confirmedRender.url : 'url' in first ? first.url : request.targetUrl,
     runtime:{node:process.version,engine:ENGINE,browser:'renderer' in rendered ? rendered.renderer.browser : 'unavailable',
       browserDriver:'renderer' in rendered ? rendered.renderer.driver : undefined},
     coverage,evidence,findings,artifacts:[...artifacts.values()],diagnostics:[...diagnostics],

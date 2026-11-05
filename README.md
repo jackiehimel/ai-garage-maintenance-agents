@@ -1,35 +1,46 @@
 # AI Garage Maintenance Agents
 
-Solvd maintenance-agent implementation workspace. The initial delivery is three independent public-page checks: technical SEO, accessibility and performance.
+Run three independent checks against public HTTPS pages through the standalone Solvd interface, the CLI, or the TypeScript API.
 
-## Start here
-
-1. Read [SPEC.md](SPEC.md), including its repository decision at the top.
-2. Use the **November 5 delivery** issue as the sole delivery checklist.
-3. Begin with U1: prove the intended runtime, real scanner calls, live AI assessment and preview access before building the interface.
-
-## Current status
-
-| Capability | Status |
+| Agent | Evidence |
 | --- | --- |
-| Repository and current specification | Initialized |
-| Runtime/provider verification | Not started in this repository |
-| SEO agent | Not implemented in this repository |
-| Accessibility agent | Not implemented in this repository |
-| Performance agent | Not implemented in this repository |
-| Deployed demo and live acceptance | Not verified |
+| Technical SEO and Discoverability | Source and rendered HTTP and indexing signals, canonicals, crawler rules, sampled sitemaps, and structured data |
+| Accessibility Regression | Axe findings and affected elements, configured keyboard states, focus assertions, and manual review coverage |
+| Performance Regression | Repeated desktop Lighthouse navigation, per-sample artifacts, metric distributions, and compatible baseline deltas |
 
-Repository initialization is not evidence that an agent works. Prior prototype code has not been imported or independently validated here.
+Each run identifies the tested URL, records incomplete coverage, and separates measured observations from supplied evidence and AI interpretation. Export the HTML report, JSON report, and portable baseline from the interface. See the full scope and delivery checks in [SPEC.md](SPEC.md) and [issue #1](https://github.com/jackiehimel/ai-garage-maintenance-agents/issues/1).
+
+## Run on a Chromium-capable host
+
+Install Node.js 24 or later and point `CHROME_PATH` to an installed Chrome or Chromium executable. Run from the repository root.
+
+```sh
+npm ci --cache /tmp/maintenance-npm-cache
+npm run build
+CHROME_PATH=/absolute/path/to/chrome npm start
+```
+
+Open [http://127.0.0.1:4175](http://127.0.0.1:4175). The server accepts loopback requests and stores reports and artifacts in `.runs` unless `RUN_STORAGE_ROOT` specifies another writable directory. Set `ANTHROPIC_API_KEY` in the server environment for live assessment. `ANTHROPIC_MODEL` selects the model. If assessment is unavailable, the report still retains any collected evidence.
+
+Use the CLI to invoke one agent independently. Pass `--config` for optional pages, states, intent, release, or sampling settings, and `--baseline` to compare with a prior export. Replace the agent ID with `accessibility` or `performance` as needed.
+
+```sh
+CHROME_PATH=/absolute/path/to/chrome npm run agent -- seo-ai-search https://www.solvd.com/ --output .runs
+npm run typecheck
+npm test
+```
+
+## Optional GitHub Actions browser
+
+The local interface can send browser collection to a configured GitHub Actions workflow. This requires the GitHub CLI authenticated to the repository with workflow dispatch and artifact access. `MAINTENANCE_REPOSITORY` and `MAINTENANCE_REF` select the workflow repository and branch. The server assembles the returned evidence and generates the report locally.
+
+```sh
+gh auth status
+BROWSER_RUNTIME=github-actions npm start
+```
+
+The recovery branch workflow has accepted a dispatch. Protected Chromium failed to launch in the current managed macOS environment, so local collection requires a host that permits the browser to start. Check the resulting report for browser coverage and use issue #1 to track deployment and reviewer access. [Workflow dispatch](https://github.com/jackiehimel/ai-garage-maintenance-agents/actions/runs/41954209953)
 
 ## Repository boundaries
 
-- **This repository:** canonical implementation, shared runtime, tests and the current build specification.
-- **[AI Garage](https://github.com/jackiehimel/ai-garage-web):** catalog, research pages and user-facing integration. Confirm the deployable integration during U1.
-- **[Earlier maintenance repository](https://github.com/jackiehimel/maintenance-agent-library):** existing research and historical plans; retained without modification.
-- **[Demo workspace](https://github.com/jackiehimel/maintenance-demo-workspace):** existing intended home for controlled targets and private evidence; retained without modification.
-
-## Working rules
-
-Keep one current specification and one delivery checklist. Use focused branches and pull requests. Preserve existing research and prototype sources until their useful parts are deliberately integrated. Do not copy an external agent implementation verbatim. Keep secrets, credentials, private target data and raw browser captures out of Git.
-
-The delivered experience must use actual submitted URLs, identify its measurement source, separate scanner results from AI interpretation and visibly report incomplete runs. No mocked or archived result may appear as a current live result.
+This repository owns implementation, runtime, tests, and the standalone app. [AI Garage](https://github.com/jackiehimel/ai-garage-web) remains the catalog. Earlier research and the controlled demo workspace remain in their existing repositories. Keep credentials, private target data, and raw captures out of Git.

@@ -56,7 +56,7 @@ Preserve optional supplied field measurements with population, collection window
 
 Use TypeScript on Node with the already-used Playwright, axe-core, Lighthouse, chrome-launcher, node-html-parser and Anthropic SDK packages. Reuse reviewed portions of the prototypes, not fixed Garage routes or their orchestration/mocked runtime. A small Node server serves the standalone static interface and invokes the same exported functions used by the CLI. No generic plugin engine or separate service per agent.
 
-Browser-backed agents require a real Chromium-capable Node host. A Cloudflare Worker-only or score API-only deployment does not satisfy these collectors. The hosting selection must be verified against existing authorized accounts before claiming deployment; do not purchase or substitute a narrower hosted mode.
+Browser-backed agents require a real Chromium-capable Node host. The standalone server runs locally by default. An optional GitHub Actions worker can run the collectors on a Chromium-capable runner and return their evidence to the local server for report assembly and assessment. Verify hosted reviewer access separately through an existing authorized account. A Cloudflare Worker-only or score API-only deployment does not satisfy these collectors.
 
 File ownership:
 - `src/core/types.ts`: request, evidence, finding, coverage, comparison and report contracts.
@@ -66,8 +66,9 @@ File ownership:
 - `src/agents/seo.ts`, `accessibility.ts`, `performance.ts`: independent collectors/evaluators.
 - `src/run.ts`, `src/cli.ts`: public programmatic entry and CLI.
 - `src/server.ts`, `src/report.ts`, `public/`: bounded API, standalone UI and escaped offline HTML.
+- `src/core/remote.ts`, `src/worker.ts`, `.github/workflows/collect.yml`: optional GitHub Actions collector dispatch and artifact return.
 - `tests/`: meaningful offline unit/contract tests and explicitly separated browser/live acceptance commands.
-- `Dockerfile`, deployment configuration if verified, `.env.example`, `README.md`: runtime and operation.
+- `README.md`: local and optional remote startup commands.
 
 The stable public entry point is `runAgent(request, options?)`, accepting exactly one `agentId` and target URL plus optional explicit page/state/intent/profile/baseline inputs. The same result contains immutable measured evidence, comparison, coverage and assessment sections. Named agent functions remain independently importable. CLI accepts an agent ID, URL, optional JSON configuration/baseline and output destination.
 
@@ -83,13 +84,15 @@ The interface uses restrained Solvd branding, three agent choices, URL input, op
 
 ## Execution tasks
 
+The shared contracts came first. The three full collectors and the standalone interface were then developed in parallel against those contracts, with browser/provider verification proceeding alongside implementation. Integrate and verify the full scope through the normal entry points. The tasks below describe ownership and acceptance criteria, and issue #1 tracks delivery status.
+
 ### Task 1: Shared runtime contracts and safety
 
 Own package/build/test configuration and `src/core/{types,input,network,browser,evidence,baseline,store}.ts` with their focused tests. Establish interfaces before agents are implemented. Use cached dependencies where available; do not bypass network restrictions.
 
 Implement validated request/portable-baseline contracts; deterministic evidence/finding IDs; explicit coverage/status; compatible baseline logic; safe persisted/generated report/artifact paths; bounded HTTP fetch with manual redirects and DNS-pinned sockets. Browser collection must enforce equivalent network policy through a scoped egress proxy or comparably complete mechanism, including subresources. Keep DNS rebinding and redirect-to-private tests meaningful. Reject missing engine/browser/runtime prerequisites explicitly.
 
-Choose concrete types for page/state/keyboard configuration and collector result composition; do not implement agent logic yet. Provide stable helpers later tasks can use. Browser/runtime versions must be available for baseline compatibility. Test offline safety, bounds, comparison and retention failures. Do not run live providers or claim browser execution when blocked.
+Choose concrete types for page/state/keyboard configuration and collector result composition. Provide stable helpers for the agent and interface work. Browser/runtime versions must be available for baseline compatibility. Test offline safety, bounds, comparison and retention failures. Track live provider and browser verification separately from offline checks.
 
 ### Task 2: SEO agent
 
@@ -125,16 +128,11 @@ Verify an existing authorized deployment path compatible with the browser runtim
 
 ## Verification and status
 
-The original repository has no implementation or test suite. Initial source is commit `4448a424222160802ca1ab09e4d76e0da504e250`. Repo checks will be defined by Task 1.
+The recovery branch contains the three collectors, the CLI and programmatic entry point, the standalone interface, the report exports and the optional browser worker. Follow [README.md](README.md) for installation and startup. Repository verification uses `npm run typecheck`, `npm test` and `npm run build`. Successful build or health checks are separate from browser and provider execution.
 
-Current environment probes:
-- GitHub connector can read the private repository and issue #1.
-- Command-line GitHub clone fails; DNS resolution fails for api.anthropic.com, registry.npmjs.org, api.vercel.com and solvd.com.
-- An Anthropic environment variable is present; usable access/quota is unverified.
-- Installed Playwright's expected Chromium revision is absent. A separate cached headless Chromium launch fails with macOS MachPortRendezvous permission denied. No browser/live scan has succeeded.
-- No deployment or reviewer access is verified.
+Protected Chromium startup is blocked in the managed macOS environment. Local collection requires a host that permits the protected browser to launch. The GitHub Actions collection workflow registered and accepted a dispatch on the recovery branch. Review the returned collector coverage separately from workflow status. [Workflow dispatch](https://github.com/jackiehimel/ai-garage-maintenance-agents/actions/runs/41954209953)
 
-These are execution blockers, not permission to narrow agent capabilities. Offline tests can establish deterministic behavior only. Issue #1 is the delivery checklist; all live/deployment criteria remain open until supported by fresh evidence.
+Record browser and provider results, controlled repeats, UI and export checks, deployed commit and reviewer access independently in [issue #1](https://github.com/jackiehimel/ai-garage-maintenance-agents/issues/1). Report each criterion only when there is direct evidence for it.
 
 ## Reference and attribution
 

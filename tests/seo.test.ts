@@ -141,3 +141,48 @@ test('an intermediate browser response cannot stand in for a verified final docu
   const response = result.evidence.find(e => e.scope.page === url && e.kind === 'seo.rendered-http');
   assert.equal((response?.data as {status:number}).status,302);
 });
+
+test('a confirmed www alias can share the exact measured canonical robots file and sitemap', async () => {
+  const submitted = 'https://www.example.com/';
+  const canonical = 'https://example.com/';
+  for (const robotsTarget of [canonical + 'robots.txt','https://unrelated.example.org/robots.txt']) {
+    const requests: string[] = [];
+    const client = createPublicHttpClient({
+      resolve: async () => [{address:'93.184.215.14',family:4}],
+      transport: async ({url}) => {
+        requests.push(url.href);
+        if (url.href === submitted || url.href === submitted + 'robots.txt') {
+          return {status:301,headers:{location:url.href === submitted ? canonical : robotsTarget},body:Readable.from([])};
+        }
+        const [type,body] = url.href === canonical + 'robots.txt' ?
+          ['text/plain','User-agent: *\nDisallow:\nSitemap: https://example.com/sitemap.xml'] :
+          url.href === canonical + 'sitemap.xml' ?
+            ['application/xml','<urlset><url><loc>https://example.com/</loc></url></urlset>'] : ['text/html',template()];
+        return {status:200,headers:{'content-type':type},body:Readable.from([body])};
+      },
+    });
+    try {
+      const request = validateRequest({agentId:'seo-ai-search',targetUrl:submitted});
+      const result = await collectSeoEvidence(request,client,async () => ({
+        ...runtime,capture:async () => ({url:canonical,status:200,headers:{},redirects:[],html:template(),diagnostics:[]}),
+        close:async () => {},
+      }));
+      const verifiedAlias = robotsTarget === canonical + 'robots.txt';
+      const coverage = result.coverage.find(x => x.subject === 'robots.txt policy for observed page origins');
+      assert.equal(coverage?.status,verifiedAlias ? 'complete' : 'incomplete');
+      const robot = result.evidence.find(x => x.kind === 'seo.robots-policy');
+      assert.ok(robot);
+      const legacy = (robot.data as {files:{url:string;fetch:{url?:string;redirects:{location:string}[]}}[]}).files.find(x => x.url === submitted + 'robots.txt');
+      assert.equal(legacy?.fetch.redirects[0]?.location,robotsTarget);
+      if (verifiedAlias) {
+        assert.equal(legacy?.fetch.url,robotsTarget);
+        assert.ok(!requests.includes(submitted + 'sitemap.xml'));
+        assert.equal(requests.filter(x => x === canonical + 'robots.txt').length,1);
+        const sitemap = result.evidence.find(x => x.kind === 'seo.sitemap-membership');
+        assert.equal((sitemap?.data as {documents:unknown[]}).documents.length,1);
+      } else {
+        assert.ok(!requests.includes(robotsTarget));
+      }
+    } finally { client.close(); }
+  }
+});
