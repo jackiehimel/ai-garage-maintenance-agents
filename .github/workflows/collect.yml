@@ -36,6 +36,7 @@ jobs:
         env:
           COLLECT_REQUEST: ${{ inputs.request || format('{{"agentId":"{0}","targetUrl":"https://www.solvd.com/"}}', matrix.agent) }}
           CHROME_PATH: /usr/bin/google-chrome
+          DEBUG: pw:browser
       - uses: actions/upload-artifact@v4
         with:
           name: collector-result-${{ matrix.agent }}

@@ -154,6 +154,11 @@ export function applyAccessibilityComparisonCoverage(request:ValidatedRequest,re
           reason = 'axe marked a baseline violation as requiring manual review: ' + rule + '.';
           break;
         }
+        if (current.some((evidence) => evidence.kind === 'axe-violation' && ruleOf(evidence) === rule &&
+          evidence.scope.element === item.scope.element && evidence.scope.component !== item.scope.component)) {
+          reason = 'A still-violating element changed its configured component mapping: ' + rule + '.';
+          break;
+        }
       }
       if (!reason) for (const item of prior.filter((evidence) => evidence.kind === 'axe-review')) {
         const rule = ruleOf(item);

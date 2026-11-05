@@ -359,7 +359,7 @@ export async function openBrowserSession(target: string,options: BrowserOptions)
   try {
     const browser = await module.chromium.launch({
       headless:true,executablePath,chromiumSandbox:true,args:egress.chromiumArgs,
-      ignoreDefaultArgs:['--disable-popup-blocking'],timeout:15_000,
+      ignoreDefaultArgs:['--disable-popup-blocking'],timeout:30_000,
     });
     close = manageBrowserShutdown(egress,() => browser.close());
     egress.signal.throwIfAborted();

@@ -186,3 +186,26 @@ test('structured limits leave all affected instances in the raw artifact and mar
   const raw = JSON.parse(String(result.artifacts.find((entry) => entry.scope?.state === 'initial')?.bytes)) as AxeResults;
   assert.equal(raw.violations[0].nodes.at(-1)?.target[0],'#control-850');
 });
+
+test('moving a still-violating element to another configured component cannot resolve it', () => {
+  const config = validateRequest({
+    agentId:'accessibility',targetUrl:page,
+    components:[{id:'header',selector:'#header'},{id:'footer',selector:'#footer'}],
+  });
+  const identity = baselineIdentity(config,runtime,page);
+  const target = '#broken';
+  const observation = (component:string):AccessibilityScan => ({
+    ...initial(axe([rule('button-name',[node(target)])])),
+    components:{counts:{header:1,footer:1},mappings:[{target:[target],componentIds:[component]}]},
+  });
+  const before = assembleAccessibilityResult(config,runtime,page,[observation('header')]);
+  const exported = createBaseline(identity,before);
+  assert.equal(exported.status,'available');
+
+  const after = assembleAccessibilityResult(config,runtime,page,[observation('footer')]);
+  applyAccessibilityComparisonCoverage({...config,baseline:exported.baseline},after);
+  const changes = compareFindings(identity,after,exported.baseline).findings;
+  assert.equal(after.findings[0].scope.component,'footer');
+  assert.equal(changes.find(({before}) => before?.scope.component === 'header')?.status,'inconclusive');
+  assert.equal(changes.find(({after}) => after?.scope.component === 'footer')?.status,'inconclusive');
+});
