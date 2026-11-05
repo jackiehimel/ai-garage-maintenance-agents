@@ -1,0 +1,35 @@
+{
+  "name": "ai-garage-maintenance-agents",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit",
+    "test": "tsc -p tsconfig.json && node --test \"dist/tests/*.test.js\"",
+    "start": "node dist/app/server.js",
+    "dev": "node --import tsx src/server.ts",
+    "agent": "node --import tsx src/cli.ts",
+    "collect": "node --import tsx src/worker.ts"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^1.4.0",
+    "@axe-core/playwright": "^4.14.0",
+    "chrome-launcher": "^1.2.2",
+    "lighthouse": "^13.6.0",
+    "node-html-parser": "^9.0.6",
+    "playwright": "^1.63.0"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.6",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2",
+    "vitest": "^5.1.0"
+  },
+  "overrides": {
+    "playwright-core": "1.63.0"
+  },
+  "engines": {
+    "node": ">=24"
+  }
+}
