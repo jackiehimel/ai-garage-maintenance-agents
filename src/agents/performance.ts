@@ -377,8 +377,9 @@ export async function collectPerformance(request: ValidatedRequest,options: Coll
         // The socket transport waits for Chrome's debugger-ready message before
         // sending target discovery. The random listener is bound to loopback,
         // which remains unreachable from page requests through protected egress.
-        executablePath,headless:true,debuggingPort:0,defaultViewport:null,
-        args:[...egress.chromiumArgs,'--remote-debugging-address=127.0.0.1',`--lang=${request.profile.locale}`],
+        executablePath,headless:true,defaultViewport:null,
+        // Supplying the address suppresses Puppeteer's automatic port flag.
+        args:[...egress.chromiumArgs,'--remote-debugging-port=0','--remote-debugging-address=127.0.0.1',`--lang=${request.profile.locale}`],
         ignoreDefaultArgs:['--disable-popup-blocking','--no-sandbox'],
         handleSIGINT:false,handleSIGTERM:false,handleSIGHUP:false,
         acceptInsecureCerts:false,timeout:STARTUP_TIMEOUT_MS,protocolTimeout:CDP_TIMEOUT_MS,signal:egress.signal,
