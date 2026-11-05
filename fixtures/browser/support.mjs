@@ -10,6 +10,7 @@ export function relabelFixtureEvidence(result, createEvidence) {
     'Protected Chromium': 'Isolated sandboxed Chromium fixture transport',
     'Protected Playwright browser': 'Isolated sandboxed Chromium fixture transport',
     'DNS-pinned public HTTP': 'Isolated fixture HTTP transport (no public egress)',
+    'DNS-pinned HTTP and protected Chromium': 'Isolated fixture HTTP and sandboxed Chromium transports (no public egress)',
   };
   const ids = new Map();
   result.evidence = result.evidence.map(({ id, ...draft }) => {

@@ -17,3 +17,6 @@ test-results/
 .remote-runs/
 collector-result.json
 .playwright-browsers/
+acceptance-artifacts/
+.evidence/
+

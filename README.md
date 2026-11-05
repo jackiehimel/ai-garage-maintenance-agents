@@ -32,6 +32,8 @@ npm test
 
 ## Optional GitHub Actions browser
 
+On a Mac with Node.js 24 or later and an authenticated GitHub CLI, double-click [`scripts/start-demo.command`](scripts/start-demo.command) in Finder, or run `bash scripts/start-demo.command` from this repository. It installs locked dependencies when needed, builds the app, and starts the local interface with the browser worker on `main`. Keep its Terminal window open and open the URL printed by the ready server in Safari. Without `ANTHROPIC_API_KEY`, measured reports still work and explicitly show AI assessment as unavailable. The launcher is prepared and syntax-checked; it has not been launch-verified in the managed environment.
+
 The local interface can send browser collection to a configured GitHub Actions workflow. This requires the GitHub CLI authenticated to the repository with workflow dispatch and artifact access. `MAINTENANCE_REPOSITORY` and `MAINTENANCE_REF` select the workflow repository and branch. The server assembles the returned evidence and generates the report locally.
 
 ```sh
@@ -57,3 +59,4 @@ This is an operating local demo with a remote browser worker. Public deployment 
 ## Repository boundaries
 
 This repository owns implementation, runtime, tests, and the standalone app. [AI Garage](https://github.com/jackiehimel/ai-garage-web) remains the catalog. Earlier research and the controlled demo workspace remain in their existing repositories. Keep credentials, private target data, and raw captures out of Git.
+
