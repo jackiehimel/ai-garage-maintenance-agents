@@ -1,7 +1,8 @@
 import { createHash } from 'node:crypto';
 import type { IncomingHttpHeaders } from 'node:http';
-import type { Response } from 'playwright';
-import { openBrowserSession } from '../core/browser.js';
+import type { Page, Response } from 'playwright';
+import { browserRequestFailure, createBrowserFailureDiagnostics, openBrowserSession, redactBrowserFailureReason } from '../core/browser.js';
+import type { BrowserFailureDiagnostics } from '../core/browser.js';
 import { canonicalJson, createEvidence, createFinding } from '../core/evidence.js';
 import { parsePublicTarget } from '../core/input.js';
 import { abortable, createPublicHttpClient, PublicHttpError } from '../core/network.js';
@@ -26,15 +27,28 @@ const isHtml = (contentType: string | undefined, text: string) => contentType
 
 interface Snapshot {
   url: string; status: number; redirects: readonly RedirectHop[]; headers: IncomingHttpHeaders;
-  html?: string; diagnostics: string[]; reason?: string; networkReason?: string; navigation?: string; finalConfirmed?: boolean;
+  html?: string; diagnostics: string[]; requestFailures?: BrowserFailureDiagnostics; reason?: string; networkReason?: string; navigation?: string; finalConfirmed?: boolean;
 }
 interface Renderer {
   browser: string; driver: string;
-  capture(url: string, observedSourceUrl?: string): Promise<Snapshot>;
+  capture(url: string, observedSourceUrl?: string): Promise<Snapshot | FailedSource>;
   close(): Promise<void>;
 }
-type FailedSource = {error: string; redirects: readonly RedirectHop[]; failedUrl?: string};
+type FailedSource = {error: string; redirects: readonly RedirectHop[]; failedUrl?: string; requestFailures?: BrowserFailureDiagnostics};
 type Source = HttpResult | FailedSource;
+
+export function observeSeoRequestFailures(page: Page, note: (reason: string) => void) {
+  const failures = createBrowserFailureDiagnostics();
+  const record = (request: import('playwright').Request, reason: string) => {
+    failures.record(browserRequestFailure(request,reason));
+    note(`${request.resourceType()} ${redactBrowserFailureReason(reason)}`);
+  };
+  page.on('requestfailed',(request) => record(request,`failed: ${request.failure()?.errorText ?? 'unknown browser error'}`));
+  page.on('response',(response) => {
+    if (response.status() >= 400) record(response.request(),`returned HTTP ${response.status()}`);
+  });
+  return failures;
+}
 
 async function browserRenderer(request: ValidatedRequest, options: CollectorOptions): Promise<Renderer> {
   const browser = await openBrowserSession(request.targetUrl,{profile:request.profile,...options});
@@ -61,24 +75,18 @@ async function browserRenderer(request: ValidatedRequest, options: CollectorOpti
         }
         navigation = observedSourceUrl;
       }
+      const beforeFailures = browser.requestFailures();
       const page = await browser.newPage();
       const diagnostics = new Set<string>();
       const before = new Set(browser.diagnostics());
       const note = (text: string) => { if (diagnostics.size < 8) diagnostics.add(short(text)); };
-      page.on('requestfailed',(resource) => {
-        if (['document','script','stylesheet','xhr','fetch'].includes(resource.resourceType())) {
-          note(`${resource.resourceType()} failed: ${resource.failure()?.errorText ?? 'unknown browser error'}`);
-        }
-      });
+      const failures = observeSeoRequestFailures(page,note);
       page.on('pageerror',(error) => note(`Page script error: ${error.message}`));
       let response: Response | undefined;
       page.on('response',(item) => {
         if (item.request().isNavigationRequest()) {
           try { if (item.request().frame() === page.mainFrame()) response = item; }
           catch { /* Navigation can precede Playwright's frame attachment. */ }
-        }
-        if (item.status() >= 400 && ['script','stylesheet','xhr','fetch'].includes(item.request().resourceType())) {
-          note(`${item.request().resourceType()} returned HTTP ${item.status()}`);
         }
       });
       let html: string | undefined;
@@ -115,11 +123,18 @@ async function browserRenderer(request: ValidatedRequest, options: CollectorOpti
           reason = message(error);
           if (!finalConfirmed) networkReason = 'Final browser response could not be verified: ' + reason;
         }
-        if (!response) throw new Error(reason ?? 'No main document response was returned by Chromium');
+        for (const entry of browser.diagnostics()) if (!before.has(entry)) note(entry);
+        const retained = browser.requestFailures();
+        // The same bounded store accounts for guard and page events; overflow is
+        // explicit even when the browser session's earlier captures filled its cap.
+        for (const failure of retained.failures.slice(beforeFailures.failures.length)) failures.record(failure);
+        const requestFailures = failures.snapshot();
+        requestFailures.overflow += retained.overflow - beforeFailures.overflow;
+        if (requestFailures.overflow) diagnostics.add('Browser request failure diagnostics truncated');
+        if (!response) return {error:reason ?? 'No main document response was returned by Chromium',redirects:[],requestFailures};
         const url = normalizedHttpUrl(page.url()) === normalizedHttpUrl(response.url()) ? page.url() : response.url();
         const redirects = await redirectChain(response).catch((error) => { networkReason = `Browser redirect history incomplete: ${message(error)}`; return []; });
-        for (const entry of browser.diagnostics()) if (!before.has(entry)) note(entry);
-        return {url,status:response.status(),headers:response.headers(),redirects,html,reason,networkReason,navigation,finalConfirmed,diagnostics:[...diagnostics]};
+        return {url,status:response.status(),headers:response.headers(),redirects,html,reason,networkReason,navigation,finalConfirmed,diagnostics:[...diagnostics],requestFailures};
       } finally { await page.close().catch(() => {}); }
     },
   };
@@ -137,9 +152,13 @@ function networkData(source: HttpResult | Snapshot | FailedSource): JsonObject {
   const redirects = source.redirects.slice(0,20).map(({url,status,location}) => ({
     url:url.slice(0,2048),status,location:location.slice(0,2048),
   }));
-  if ('error' in source) return {error:source.error,failedUrl:source.failedUrl?.slice(0,2048) ?? null,redirects};
+  const failureData: JsonObject = 'requestFailures' in source && source.requestFailures ? {
+    requestFailures:{failures:source.requestFailures.failures.map(failure => ({...failure})),overflow:source.requestFailures.overflow},
+  } : {};
+  if ('error' in source) return {error:source.error,failedUrl:source.failedUrl?.slice(0,2048) ?? null,redirects,...failureData};
   const contentType = source.headers['content-type'];
   return {url:source.url,status:source.status,redirects,contentType:contentType ? short(contentType) : null,
+    ...failureData,
     ...('navigation' in source && source.navigation ? {navigation:source.navigation} : {}),
     ...('finalConfirmed' in source ? {finalConfirmed:source.finalConfirmed ?? null} : {}),
     ...(source.headers.location ? {location:source.headers.location.slice(0,2048)} : {}),
@@ -315,7 +334,9 @@ export async function collectSeoEvidence(
       try { document = readDocument(snapshot.html,snapshot.url); }
       catch (error) { parseError = `HTML parsing did not complete: ${message(error)}`; }
     }
-    const quality = missing ? snapshot.error : snapshot.reason ?? parseError ?? (snapshot.diagnostics.length ? `Render had limited coverage: ${snapshot.diagnostics.join('; ')}` : undefined);
+    const failureReason = !missing && snapshot.requestFailures && (snapshot.requestFailures.failures.length || snapshot.requestFailures.overflow)
+      ? `Browser requests could not be fully inspected${snapshot.requestFailures.overflow ? '; request failure diagnostics truncated' : ''}` : undefined;
+    const quality = missing ? snapshot.error : snapshot.reason ?? parseError ?? (snapshot.diagnostics.length ? `Render had limited coverage: ${snapshot.diagnostics.join('; ')}` : failureReason);
     if (quality && kind === 'rendered') note(quality);
     const metadataCoverage = addCoverage(scope,`${kind} HTML canonical and indexing directives`,!document ? (missing ? 'unavailable' : 'incomplete') :
       quality || document.incomplete ? 'incomplete' : 'complete',quality ?? (!document ? 'No HTML snapshot was available' : document.incomplete ? 'Document metadata exceeded parse limits' : undefined));
@@ -479,16 +500,18 @@ export async function collectSeoEvidence(
     const sitemapReasons = [...new Set(robotSites.flatMap(item => item.sitemapReasons))];
     const sitemapDocuments = [...new Set(robotSites.flatMap(item => item.maps))];
     const sitemapStatus = sitemapReasons.length ? (sitemapDocuments.length && sitemapDocuments.every(x => 'error' in x.result) ? 'unavailable' : 'incomplete') : 'complete';
-    const sitemapCoverage = addCoverage(scope,'sampled sitemap membership',sitemapStatus,sitemapReasons.join('; ') || undefined);
     const lookup = new Set([page.url,source.url,render.url].filter((url): url is string => Boolean(url)).map(url => normalizedHttpUrl(url)).filter((url): url is string => Boolean(url)));
     const listedUrls = [...lookup].filter(url => robotSites.some(item => item.locations.has(url)));
+    const positiveComplete = sitemapDocuments.some(({result,parsed,reason}) => !('error' in result) && result.status === 200 && !reason && !parsed?.reason && parsed?.root === 'urlset' && parsed.locations.some(url => lookup.has(url)));
+    const coverageBasis = positiveComplete ? 'fully-parsed-urlset-match' : 'bounded-traversal';
+    const sitemapCoverage = addCoverage(scope,'sampled sitemap membership',positiveComplete ? 'complete' : sitemapStatus,positiveComplete ? undefined : sitemapReasons.join('; ') || undefined,{traversalCoverage:sitemapStatus,coverageBasis});
     addEvidence(scope,'seo.sitemap-membership','DNS-pinned public HTTP',listedUrls.length ? 'Page URL appears in the sampled sitemap data' : 'Page URL was not seen in the sampled sitemap data',{
       listed:listedUrls.length > 0,listedUrls,checkedUrls:[...lookup],sampled:true,distinctLocations:new Set(robotSites.flatMap(item => [...item.locations])).size,
       reasons:sitemapReasons,documents:sitemapDocuments.map(({requested,result,parsed,reason}) => ({
         requested,...networkData(result),root:parsed?.root ?? null,locations:parsed?.locationCount ?? null,
         sample:parsed?.locations.slice(0,6) ?? [],reason:reason ?? null,
       })),
-      coverage:sitemapCoverage.status,
+      coverage:sitemapCoverage.status,traversalCoverage:sitemapStatus,coverageBasis,
     });
 
     const documents = [source,render].filter(x => x.document);
@@ -567,3 +590,4 @@ export async function collectSeo(request: ValidatedRequest, options: CollectorOp
   try { return await collectSeoEvidence(request,client,() => browserRenderer(request,options)); }
   finally { client.close(); }
 }
+

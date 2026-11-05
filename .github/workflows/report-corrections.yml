@@ -1,0 +1,32 @@
+name: Verify report corrections
+on:
+  push:
+    branches: [codex/report-corrections]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24.22.1'
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+      - name: Fresh protected Solvd scans
+        run: node scripts/verify-report-corrections.mjs
+        env:
+          CHROME_PATH: /usr/bin/google-chrome
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: report-corrections-${{ github.sha }}
+          path: acceptance-artifacts/report-corrections
+          retention-days: 7
+          if-no-files-found: error

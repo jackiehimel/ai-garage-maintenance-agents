@@ -12,7 +12,7 @@ const noindex = '<meta name="robots" content="noindex, follow">';
 const template = (head = '') => '<!doctype html><html><head>' + head + '</head><body>Test</body></html>';
 const runtime = { browser: '120.0.0.0', driver: '1.63.0' };
 
-async function fixture(options: { intent?: 'indexable'|'excluded'; source?: string; render?: string|null; search?: boolean; sitemaps?: boolean; redirect?: boolean; robots?: string; sitemap?: string; headers?: Record<string,string>; provisionalBrowser?: boolean } = {}) {
+async function fixture(options: { intent?: 'indexable'|'excluded'; source?: string; render?: string|null; search?: boolean; sitemaps?: boolean; redirect?: boolean; robots?: string; sitemap?: string; headers?: Record<string,string>; provisionalBrowser?: boolean; renderFailure?: boolean; sitemapIndex?: string; requestFailures?: import('../src/core/browser.js').BrowserFailureDiagnostics } = {}) {
   const request = validateRequest({
     agentId: 'seo-ai-search', targetUrl: url, pages: [extra],
     indexIntent: options.intent ? [{page:url,intended:options.intent}] : [],
@@ -24,7 +24,7 @@ async function fixture(options: { intent?: 'indexable'|'excluded'; source?: stri
     ['/extra', template()],
     ['/landing', template()],
     ['/robots.txt', options.robots ?? (options.sitemaps ? 'Sitemap: https://example.com/index.xml\nUser-agent: *\nDisallow: /custom*\nUser-agent: Googlebot\nDisallow: /custom\nAllow: /custom?release=2$' : 'User-agent: *\nDisallow:')],
-    ['/index.xml', '<sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"><sitemap><loc>https://example.com/sitemap.xml</loc></sitemap></sitemapindex>'],
+    ['/index.xml', options.sitemapIndex ?? '<sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"><sitemap><loc>https://example.com/sitemap.xml</loc></sitemap></sitemapindex>'],
     ['/sitemap.xml', options.sitemap ?? '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"><url><loc>https://example.com/custom?release=2&amp;x=3</loc></url><url><loc>https://example.com/extra</loc></url></urlset>'],
   ]);
   const client = createPublicHttpClient({
@@ -42,10 +42,11 @@ async function fixture(options: { intent?: 'indexable'|'excluded'; source?: stri
     const result = await collectSeoEvidence(request, client, async () => ({
       ...runtime,
       capture: async (page) => {
+        if (options.renderFailure) return {error:'Final browser response unavailable',redirects:[],requestFailures:options.requestFailures};
         if (options.render === null) throw new Error('Rendered fixture unavailable');
         if (page === url && options.provisionalBrowser) return {url:'https://example.com/intermediate',status:302,redirects:[],headers:{location:'https://blocked.example/'},diagnostics:[],reason:'Navigation blocked',networkReason:'No final document',finalConfirmed:false};
         const html = page === url ? template(options.render ?? options.source) : template();
-        return {url:page,status:200,redirects:[],headers:{},html,diagnostics:[]};
+        return {url:page,status:200,redirects:[],headers:{},html,diagnostics:options.requestFailures ? ['Unknown browser request failure'] : [],requestFailures:options.requestFailures};
       },
       close: async () => {},
     }));
@@ -185,4 +186,68 @@ test('a confirmed www alias can share the exact measured canonical robots file a
       }
     } finally { client.close(); }
   }
+});
+
+
+const wideIndex = '<sitemapindex>' + ['sitemap.xml','a.xml','b.xml','c.xml','d.xml'].map(name => `<sitemap><loc>https://example.com/${name}</loc></sitemap>`).join('') + '</sitemapindex>';
+
+test('fully parsed positive membership is complete even when bounded traversal is incomplete', async () => {
+  const {result} = await fixture({sitemaps:true,sitemapIndex:wideIndex});
+  const item = result.evidence.find(e => e.kind === 'seo.sitemap-membership' && e.scope.page === extra)!;
+  const data = item.data as Record<string, unknown>;
+  assert.equal(data.coverage,'complete');
+  assert.equal(data.traversalCoverage,'incomplete');
+  assert.equal(data.coverageBasis,'fully-parsed-urlset-match');
+  assert.equal(data.sampled,true);
+  assert.match(JSON.stringify(data.reasons),/limit reached/);
+  assert.equal(result.coverage.find(c => c.subject === 'sampled sitemap membership' && c.scope.page === extra)?.status,'complete');
+  const missing = result.evidence.find(e => e.kind === 'seo.sitemap-membership' && e.scope.page === url)!;
+  assert.equal((missing.data as Record<string, unknown>).coverage,'incomplete');
+  assert.equal((missing.data as Record<string, unknown>).coverageBasis,'bounded-traversal');
+});
+
+test('partial positive urlsets and index locations cannot establish complete scoped membership', async () => {
+  for (const sitemap of ['<urlset><url><loc>https://example.com/extra</loc></url>',
+    '<urlset><url><loc>https://example.com/extra</loc></url><wrong/></urlset>',
+    '<sitemapindex><sitemap><loc>https://example.com/extra</loc></sitemap></sitemapindex>']) {
+    const {result} = await fixture({sitemaps:true,sitemapIndex:wideIndex,sitemap});
+    const data = result.evidence.find(e => e.kind === 'seo.sitemap-membership' && e.scope.page === extra)!.data as Record<string, unknown>;
+    assert.equal(data.coverage,'incomplete');
+    assert.equal(data.coverageBasis,'bounded-traversal');
+  }
+});
+
+test('retained request identities and overflow remain visible evidence and render limitations', async () => {
+  const requestFailures = {failures:[{method:'POST',url:'https://example.com/api',resourceType:'fetch',mainDocument:false,reason:'Browser method blocked'}],overflow:2};
+  const {result} = await fixture({requestFailures});
+  const http = result.evidence.find(e => e.kind === 'seo.rendered-http' && e.scope.page === url)!;
+  assert.deepEqual((http.data as Record<string,unknown>).requestFailures,requestFailures);
+  assert.equal(result.coverage.find(c => c.subject === 'rendered HTML canonical and indexing directives' && c.scope.page === url)?.status,'incomplete');
+});
+
+test('SEO observes failed and HTTP-error requests with bounded redacted identity', async () => {
+  const {observeSeoRequestFailures} = await import('../src/agents/seo.js');
+  const listeners = new Map<string,(value: unknown) => void>();
+  const notes: string[] = [];
+  const failures = observeSeoRequestFailures({on:(name: string,listener: (value: unknown) => void) => listeners.set(name,listener)} as never,text => notes.push(text));
+  const request = (type: string,main = false) => ({method:() => 'GET',url:() => 'https://example.com/asset?token=secret#secret',resourceType:() => type,isNavigationRequest:() => main,frame:() => ({parentFrame:() => null}),failure:() => ({errorText:'net::ERR_FAILED https://example.com/asset?token=secret#secret'})});
+  listeners.get('requestfailed')!(request('document',true));
+  listeners.get('response')!({request:() => request('stylesheet'),status:() => 503});
+  listeners.get('response')!({request:() => request('script'),status:() => 200});
+  for (let count = 0; count < 18; count++) listeners.get('requestfailed')!(request('fetch'));
+  const retained = failures.snapshot();
+  assert.equal(retained.failures.length,16);
+  assert.equal(retained.overflow,4);
+  assert.equal(retained.failures[0].mainDocument,true);
+  assert.equal(retained.failures[1].resourceType,'stylesheet');
+  assert.equal(retained.failures[1].reason,'returned HTTP 503');
+  assert.doesNotMatch(JSON.stringify({retained,notes}),/secret|token|#/);
+});
+
+test('failed main navigation retains request failure identities in SEO evidence', async () => {
+  const requestFailures = {failures:[{method:'GET',url:'https://other.example.com/',resourceType:'document',mainDocument:true,reason:'Browser document left the accepted origin'}],overflow:0};
+  const {result} = await fixture({renderFailure:true,requestFailures});
+  const http = result.evidence.find(e => e.kind === 'seo.rendered-http' && e.scope.page === url)!;
+  assert.deepEqual((http.data as Record<string,unknown>).requestFailures,requestFailures);
+  assert.equal(result.coverage.find(c => c.subject === 'rendered HTTP status and redirects' && c.scope.page === url)?.status,'unavailable');
 });

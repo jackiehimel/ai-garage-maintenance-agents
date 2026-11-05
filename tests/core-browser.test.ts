@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { validateRequest } from '../src/core/input.js';
-import { browserRequestTarget, chromiumEgressArgs, connectTarget, createBrowserRequestBudget, createDocumentScope, manageBrowserShutdown, pinBrowserConnect } from '../src/core/browser.js';
+import { browserRequestTarget, chromiumEgressArgs, connectTarget, createBrowserRequestBudget, createDocumentScope, manageBrowserShutdown, pinBrowserConnect, createBrowserFailureDiagnostics, protectRedirects, protectBrowserRoute } from '../src/core/browser.js';
 
 test('blocks direct HTTP methods, proxy authorities that could bypass DNS validation, and unauthorized ports', () => {
   assert.throws(() => browserRequestTarget('POST','http://public.example.com/checkout','public.example.com'),/GET|method/i);
@@ -69,4 +69,43 @@ test('the common Chromium launch configuration blocks SharedWorkers and declares
   assert.ok(args.includes('--proxy-server=http://127.0.0.1:43210'));
   const {profile} = validateRequest({agentId:'performance',targetUrl:'https://public.example.com/'});
   assert.equal(profile.sharedWorkers,'blocked');
+});
+
+
+test('request failure identities redact credentials, queries, fragments and bound retained records', () => {
+  const store = createBrowserFailureDiagnostics(2);
+  store.record({method:'POST',url:'https://user:secret@example.com/api?token=private#private',resourceType:'fetch',mainDocument:false,reason:'Denied https://example.com/api?secret=private#private'});
+  store.record({method:'GET',url:'invalid?secret=private',resourceType:'script',mainDocument:false,reason:'failed'});
+  store.record({method:'GET',url:'https://example.com/third',resourceType:'document',mainDocument:true,reason:'failed'});
+  const result = store.snapshot();
+  assert.equal(result.failures[0].url,'https://example.com/api');
+  assert.equal(result.failures[0].reason,'Denied https://example.com/api');
+  assert.equal(result.failures[1].url,'[unavailable]');
+  assert.equal(result.overflow,1);
+  assert.doesNotMatch(JSON.stringify(result),/private|secret|user:/);
+  result.failures.length = 0;
+  assert.equal(store.snapshot().failures.length,2);
+});
+
+test('both browser interception paths retain blocked request identity without permitting it', async () => {
+  const store = createBrowserFailureDiagnostics();
+  const messages: string[] = [];
+  let listener: (event: unknown) => void = () => {};
+  const commands: string[] = [];
+  const cdp = {send:async (command: string) => { commands.push(command); return {frameTree:{frame:{id:'main'}}}; },on:(_name: string,fn: typeof listener) => { listener = fn; }};
+  await protectRedirects({newCDPSession:async () => cdp} as never,{} as never,createDocumentScope('https://example.com'),new AbortController().signal,m => messages.push(m),failure => store.record(failure));
+  listener({request:{method:'POST',url:'https://example.com/submit?token=hidden#hidden'},resourceType:'Document',frameId:'main',requestId:'id'});
+  await new Promise<void>(resolve => setImmediate(resolve));
+  let aborted = false, continued = false;
+  const request = {method:() => 'POST',url:() => 'https://other.example.com/api?token=hidden',resourceType:() => 'fetch',isNavigationRequest:() => false};
+  await protectBrowserRoute({request:() => request,abort:async () => { aborted = true; },continue:async () => { continued = true; }} as never,new Set(),createDocumentScope('https://example.com'),new AbortController().signal,m => messages.push(m),failure => store.record(failure));
+  assert.ok(commands.includes('Fetch.failRequest'));
+  assert.ok(!commands.includes('Fetch.continueRequest'));
+  assert.ok(aborted);
+  assert.equal(continued,false);
+  assert.deepEqual(store.snapshot().failures.map(({method,url,resourceType,mainDocument,reason}) => ({method,url,resourceType,mainDocument,reason})),[
+    {method:'POST',url:'https://example.com/submit',resourceType:'document',mainDocument:true,reason:'Browser method blocked'},
+    {method:'POST',url:'https://other.example.com/api',resourceType:'fetch',mainDocument:false,reason:'Browser method blocked'},
+  ]);
+  assert.deepEqual(messages,['Browser method blocked','Browser method blocked']);
 });

@@ -3,7 +3,7 @@ import { constants } from 'node:fs';
 import http from 'node:http';
 import net from 'node:net';
 import { pipeline } from 'node:stream/promises';
-import type { BrowserContext, CDPSession, Page } from 'playwright';
+import type { BrowserContext, CDPSession, Page, Request, Route } from 'playwright';
 import { parsePublicResource, parsePublicTarget } from './input.js';
 import { abortable, cappedBytes, deadlineSignal, isAllowedDocumentOrigin, pinDestination, sendPinnedRequest } from './network.js';
 import type { PinnedDestination, Resolver } from './network.js';
@@ -298,6 +298,46 @@ export async function startBrowserEgress(options: BrowserEgressOptions = {}): Pr
   };
 }
 
+export interface BrowserRequestFailure {
+  method: string;
+  url: string;
+  resourceType: string;
+  mainDocument: boolean;
+  reason: string;
+}
+export interface BrowserFailureDiagnostics { failures: BrowserRequestFailure[]; overflow: number }
+
+// Deliberately retain only origin/path: credentials, query values and fragments
+// are never needed to identify the request that the collector could not inspect.
+function requestIdentity(raw: string): string {
+  try {
+    const url = new URL(raw);
+    return /^https?:$/.test(url.protocol) ? (url.origin + url.pathname).slice(0,2048) : '[unavailable]';
+  } catch { return '[unavailable]'; }
+}
+export function redactBrowserFailureReason(reason: string): string {
+  return reason.replace(/https?:\/\/[^\s"'<>]+/gi,requestIdentity).slice(0,240).replaceAll('\0','\uFFFD');
+}
+export function createBrowserFailureDiagnostics(limit = 16) {
+  if (!Number.isSafeInteger(limit) || limit < 1 || limit > 100) throw new Error('Invalid browser failure diagnostic limit');
+  const failures: BrowserRequestFailure[] = [];
+  let overflow = 0;
+  return {
+    record(failure: BrowserRequestFailure) {
+      if (failures.length >= limit) { overflow = Math.min(Number.MAX_SAFE_INTEGER,overflow + 1); return; }
+      failures.push({method:failure.method.slice(0,32),url:requestIdentity(failure.url),resourceType:failure.resourceType.toLowerCase().slice(0,64),
+        mainDocument:failure.mainDocument,reason:redactBrowserFailureReason(failure.reason)});
+    },
+    snapshot:(): BrowserFailureDiagnostics => ({failures:failures.map(item => ({...item})),overflow}),
+  };
+}
+export function browserRequestFailure(request: Request, reason: string): BrowserRequestFailure {
+  let mainDocument = false;
+  try { mainDocument = request.isNavigationRequest() && !request.frame().parentFrame(); }
+  catch { /* Worker requests have no attached frame and are not main documents. */ }
+  return {method:request.method(),url:request.url(),resourceType:request.resourceType(),mainDocument,reason};
+}
+
 export interface BrowserOptions extends BrowserEgressOptions {
   executablePath?: string;
   profile: DeclaredProfile;
@@ -309,6 +349,7 @@ export interface BrowserSession {
   signal: AbortSignal;
   newPage(): Promise<Page>;
   diagnostics(): string[];
+  requestFailures(): BrowserFailureDiagnostics;
   close(): Promise<void>;
 }
 
@@ -324,7 +365,7 @@ export function manageBrowserShutdown(egress: Pick<BrowserEgress,'signal' | 'clo
   return close;
 }
 
-async function protectRedirects(context: BrowserContext,page: Page,scope: DocumentScope,signal: AbortSignal,report: (message: string) => void): Promise<void> {
+export async function protectRedirects(context: BrowserContext,page: Page,scope: DocumentScope,signal: AbortSignal,report: (message: string) => void,recordFailure: (failure: BrowserRequestFailure) => void): Promise<void> {
   const cdp: CDPSession = await context.newCDPSession(page);
   const {frameTree} = await cdp.send('Page.getFrameTree');
   const main = frameTree.frame.id;
@@ -336,7 +377,9 @@ async function protectRedirects(context: BrowserContext,page: Page,scope: Docume
         const url = parsePublicResource(event.request.url);
         scope.assert(url,event.resourceType === 'Document' && event.frameId === main);
       } catch (error) {
-        report(error instanceof Error ? error.message : 'Browser request blocked');
+        const reason = error instanceof Error ? error.message : 'Browser request blocked';
+        report(reason);
+        recordFailure({method:event.request.method,url:event.request.url,resourceType:event.resourceType,mainDocument:event.resourceType === 'Document' && event.frameId === main,reason});
         await cdp.send('Fetch.failRequest',{requestId:event.requestId,errorReason:'BlockedByClient'}).catch(() => {});
         return;
       }
@@ -344,6 +387,27 @@ async function protectRedirects(context: BrowserContext,page: Page,scope: Docume
     })();
   });
   await cdp.send('Fetch.enable',{patterns:[{urlPattern:'http://*'},{urlPattern:'https://*'}]});
+}
+
+export async function protectBrowserRoute(route: Route,allowedPages: Set<Page>,scope: DocumentScope,signal: AbortSignal,report: (message: string) => void,recordFailure: (failure: BrowserRequestFailure) => void): Promise<void> {
+  const request = route.request();
+  try {
+    signal.throwIfAborted();
+    if (!['GET','HEAD'].includes(request.method())) throw new Error('Browser method blocked');
+    const url = parsePublicResource(request.url());
+    if (request.isNavigationRequest()) {
+      const frame = request.frame();
+      if (!allowedPages.has(frame.page())) throw new Error('Unexpected browser page navigation blocked');
+      scope.assert(url,!frame.parentFrame());
+    }
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : 'Browser request blocked';
+    report(reason);
+    recordFailure(browserRequestFailure(request,reason));
+    await route.abort('blockedbyclient').catch(() => {});
+    return;
+  }
+  await route.continue().catch(() => {});
 }
 
 export async function openBrowserSession(target: string,options: BrowserOptions): Promise<BrowserSession> {
@@ -369,6 +433,7 @@ export async function openBrowserSession(target: string,options: BrowserOptions)
     context.setDefaultNavigationTimeout(18_000);
     const allowedPages = new Set<Page>();
     const reasons = new Set<string>();
+    const failures = createBrowserFailureDiagnostics();
     const report = (message: string) => { if (reasons.size < 16) reasons.add(message); };
     // The context's CDP-backed events include redirects that Playwright routing
     // does not reinvoke and requests multiplexed over the same CONNECT tunnel.
@@ -378,24 +443,7 @@ export async function openBrowserSession(target: string,options: BrowserOptions)
         if (opener) { report('Unexpected browser popup closed'); return page.close(); }
       }).catch(() => {});
     });
-    await context.route('**/*',async (route) => {
-      const request = route.request();
-      try {
-        egress.signal.throwIfAborted();
-        if (!['GET','HEAD'].includes(request.method())) throw new Error('Browser method blocked');
-        const url = parsePublicResource(request.url());
-        if (request.isNavigationRequest()) {
-          const frame = request.frame();
-          if (!allowedPages.has(frame.page())) throw new Error('Unexpected browser page navigation blocked');
-          scope.assert(url,!frame.parentFrame());
-        }
-      } catch (error) {
-        report(error instanceof Error ? error.message : 'Browser request blocked');
-        await route.abort('blockedbyclient').catch(() => {});
-        return;
-      }
-      await route.continue().catch(() => {});
-    });
+    await context.route('**/*',(route) => protectBrowserRoute(route,allowedPages,scope,egress.signal,report,failures.record));
     await context.routeWebSocket('**/*',(socket) => { void socket.close({code:1008,reason:'Public collection disables WebSocket'}).catch(() => {}); });
     const driverVersion = (await import('playwright/package.json',{with:{type:'json'}})).default.version;
     egress.signal.throwIfAborted();
@@ -409,7 +457,7 @@ export async function openBrowserSession(target: string,options: BrowserOptions)
         allowedPages.add(page);
         page.once('close',() => allowedPages.delete(page));
         try {
-          await protectRedirects(context,page,scope,egress.signal,report);
+          await protectRedirects(context,page,scope,egress.signal,report,failures.record);
           egress.signal.throwIfAborted();
         } catch (error) {
           await page.close().catch(() => {});
@@ -417,7 +465,8 @@ export async function openBrowserSession(target: string,options: BrowserOptions)
         }
         return page;
       },
-      diagnostics:() => [...reasons,...egress.diagnostics().reasons],
+      diagnostics:() => [...reasons,...egress.diagnostics().reasons,...(failures.snapshot().overflow ? ['Browser request failure diagnostics truncated'] : [])],
+      requestFailures:failures.snapshot,
       close,
     };
   } catch (error) {
@@ -425,3 +474,4 @@ export async function openBrowserSession(target: string,options: BrowserOptions)
     throw new Error('Chromium could not start in the protected browser environment',{cause:error});
   }
 }
+
