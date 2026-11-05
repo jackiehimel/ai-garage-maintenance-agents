@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { Readable } from 'node:stream';
 import test from 'node:test';
-import { collectSeoEvidence } from '../src/agents/seo.js';
+import { collectSeoEvidence, seoGuardFailuresAccounted } from '../src/agents/seo.js';
 import { baselineIdentity, compareFindings, createBaseline } from '../src/core/baseline.js';
 import { validateRequest } from '../src/core/input.js';
 import { createPublicHttpClient } from '../src/core/network.js';
@@ -259,6 +259,8 @@ test('only exact observed reporting blocks and ordinary non-content assets prese
     'https://ad.doubleclick.net/ccm/s/collect','https://www.google.com/rmkt/collect/123/'];
   const failures = reporting.map(url=>({method:'POST',url,resourceType:'fetch',mainDocument:false,reason:'Browser method blocked'}));
   failures.push({method:'GET',url:'https://ad.doubleclick.net/ccm/s/collect',resourceType:'image',mainDocument:false,reason:'failed: net::ERR_BLOCKED_BY_CLIENT.Inspector'});
+  failures.push({method:'GET',url:'https://ad.doubleclick.net/ccm/s/collect',resourceType:'image',mainDocument:false,reason:'failed: net::ERR_BLOCKED_BY_ORB'});
+  failures.push({method:'GET',url:'https://example.com/video',resourceType:'media',mainDocument:false,reason:'failed: net::ERR_ABORTED'});
   for (const resourceType of ['image','media','font','ping']) failures.push({method:'GET',url:'https://example.com/asset',resourceType,mainDocument:false,reason:'returned HTTP 404'});
   const {result} = await fixture({requestFailures:{failures,overflow:0},diagnostics:['Browser method blocked']});
   for (const page of [url,extra]) {
@@ -293,4 +295,31 @@ test('unknown, spoofed, security, unaccounted and overflow failures still limit 
     const {result} = await fixture({requestFailures:{failures:[base],overflow:0},diagnostics:[reason]});
     assert.equal(result.coverage.find(c=>c.subject === 'rendered JSON-LD parse and type observations' && c.scope.page === url)?.status,'incomplete');
   }
+});
+
+
+test('asset security and unknown errors remain limiting, including ORB outside the exact reporting image', async () => {
+  const base = {method:'GET',url:'https://ad.doubleclick.net/ccm/s/collect',resourceType:'image',mainDocument:false,reason:'failed: net::ERR_BLOCKED_BY_ORB'};
+  const failures = [
+    ...['ERR_CERT_AUTHORITY_INVALID','ERR_SSL_PROTOCOL_ERROR','ERR_UNSAFE_PORT','ERR_MADE_UP_CODE'].map(code=>({...base,reason:'failed: net::'+code})),
+    {...base,url:'https://ad.doubleclick.net.attacker.example/ccm/s/collect'},
+    {...base,url:'https://ad.doubleclick.net/ccm/s/collect/extra'},
+    {...base,resourceType:'fetch'}, {...base,resourceType:'script'}, {...base,mainDocument:true},
+    {...base,reason:'failed: net::ERR_BLOCKED_BY_ORB.Inspector'},
+  ];
+  for (const failure of failures) {
+    const {result} = await fixture({requestFailures:{failures:[failure],overflow:0}});
+    assert.equal(result.coverage.find(c=>c.subject === 'rendered HTML canonical and indexing directives' && c.scope.page === url)?.status,'incomplete');
+    const data = result.evidence.find(e=>e.kind === 'seo.rendered-http' && e.scope.page === url)!.data as Record<string,unknown>;
+    assert.deepEqual(data.requestFailures,{failures:[failure],overflow:0});
+    assert.equal((data.requestFailureImpact as Array<{impact:string}>)[0].impact,'limiting');
+  }
+});
+
+
+test('observed xhr guard and fetch failure account for the same reporting request', () => {
+  const guard = {method:'POST',url:'https://analytics.google.com/g/collect',resourceType:'xhr',mainDocument:false,reason:'Browser method blocked'};
+  const observed = {...guard,resourceType:'fetch',reason:'failed: net::ERR_BLOCKED_BY_CLIENT.Inspector'};
+  assert.equal(seoGuardFailuresAccounted([guard],[observed]),true);
+  assert.equal(seoGuardFailuresAccounted([guard,guard],[observed]),false);
 });

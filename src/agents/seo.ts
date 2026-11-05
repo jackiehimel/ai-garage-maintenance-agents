@@ -47,7 +47,8 @@ function seoFailureImpact(failure: BrowserRequestFailure): {impact:'limiting'|'n
     // Google documents analytics.google.com/g/collect and reporting destinations:
     // https://developers.google.com/tag-platform/security/guides/csp
     // Other exact paths below are inferences from the protected Solvd trace,
-    // not documented stable APIs. See docs/research/seo-coverage.md.
+    // not documented stable APIs. The exact GET image ORB exception also comes
+    // from that observed trace. See docs/research/seo-coverage.md.
     const exact = url.protocol === 'https:' && !url.port && !url.username && !url.password &&
       !/^https:\/\/[^/]*:/i.test(failure.url);
     const postPath = (url.hostname === 'analytics.google.com' && url.pathname === '/g/collect') ||
@@ -55,15 +56,16 @@ function seoFailureImpact(failure: BrowserRequestFailure): {impact:'limiting'|'n
       (url.hostname === 'www.google.com' && ['/g/collect','/ccm/collect'].includes(url.pathname)) ||
       (url.hostname === 'ad.doubleclick.net' && url.pathname === '/ccm/s/collect') ||
       (url.hostname === 'www.google.com' && /^\/rmkt\/collect\/\d+\/$/.test(url.pathname));
-    reporting = exact && intentionalBlock && (
-      (failure.method === 'POST' && ['fetch','xhr','ping'].includes(failure.resourceType) && postPath) ||
-      (failure.method === 'GET' && failure.resourceType === 'image' && url.hostname === 'ad.doubleclick.net' && url.pathname === '/ccm/s/collect'));
+    reporting = exact && (
+      (intentionalBlock && failure.method === 'POST' && ['fetch','xhr','ping'].includes(failure.resourceType) && postPath) ||
+      (failure.method === 'GET' && failure.resourceType === 'image' && url.hostname === 'ad.doubleclick.net' && url.pathname === '/ccm/s/collect' &&
+        (intentionalBlock || failure.reason === 'failed: net::ERR_BLOCKED_BY_ORB')));
   } catch { /* Unavailable or invalid request identity cannot establish reporting traffic. */ }
-  if (reporting) return {impact:'non-content',reason:'Observed reporting endpoint was intentionally blocked; it does not establish a failed HTML metadata dependency'};
+  if (reporting) return {impact:'non-content',reason:'Observed reporting endpoint was blocked; it does not establish a failed HTML metadata dependency'};
   // Ordinary asset errors remain visible but are outside HTML metadata inspection.
   // Unknown guard/security failures (including unaccounted method blocks) still limit it.
   if (['image','media','font','ping'].includes(failure.resourceType) && ['GET','HEAD'].includes(failure.method) &&
-      (/^returned HTTP [45]\d\d$/.test(failure.reason) || /^failed: net::ERR_(?!BLOCKED)[A-Z_]+(?:\.Inspector)?$/.test(failure.reason))) {
+      (/^returned HTTP [45]\d\d$/.test(failure.reason) || failure.reason === 'failed: net::ERR_ABORTED')) {
     return {impact:'non-content',reason:'Image, media, font or ping failure retained outside HTML canonical, indexing and JSON-LD inspection scope'};
   }
   return limiting;
@@ -77,6 +79,18 @@ function seoRequestLimitations(snapshot: Snapshot): string[] {
   if (failures?.overflow) reasons.push('Browser request failure diagnostics truncated');
   if (impacts.some(item=>item.impact === 'limiting')) reasons.push('Browser requests could not be fully inspected');
   return [...new Set(reasons)];
+}
+
+export function seoGuardFailuresAccounted(blocks: BrowserRequestFailure[], observed: BrowserRequestFailure[]): boolean {
+  // CDP calls an XHR 'xhr' while Playwright can report the same request as 'fetch'.
+  const identity = (item: BrowserRequestFailure) => JSON.stringify([item.method,item.url,
+    ['xhr','fetch'].includes(item.resourceType) ? 'fetch/xhr' : item.resourceType,item.mainDocument]);
+  const remaining = observed.filter(item=>/^failed: net::ERR_BLOCKED_BY_CLIENT(?:\.Inspector)?$/.test(item.reason));
+  return blocks.every(block=>{
+    const index = remaining.findIndex(item=>identity(item) === identity(block));
+    if (index<0) return false;
+    remaining.splice(index,1); return true;
+  });
 }
 
 export function observeSeoRequestFailures(page: Page, note: (reason: string) => void) {
@@ -180,13 +194,7 @@ async function browserRenderer(request: ValidatedRequest, options: CollectorOpti
             const blocks = newGuards.filter(item=>item.reason === entry);
             // Repeated global reason strings are not event counters. Account for
             // every fresh guard record, even when the string existed on a prior page.
-            const identity = (item: BrowserRequestFailure) => JSON.stringify([item.method,item.url,item.resourceType,item.mainDocument]);
-            const remaining = observed.failures.filter(item=>/^failed: net::ERR_BLOCKED_BY_CLIENT(?:\.Inspector)?$/.test(item.reason));
-            const matched = blocks.every(block=>{
-              const index = remaining.findIndex(item=>identity(item) === identity(block));
-              if (index<0) return false;
-              remaining.splice(index,1); return true;
-            });
+            const matched = seoGuardFailuresAccounted(blocks,observed.failures);
             if (!requestFailures.overflow && !retained.overflow && blocks.length && matched &&
                 requestFailures.failures.every(item=>seoFailureImpact(item).impact === 'non-content')) continue;
             if (blocks.length && !matched) {

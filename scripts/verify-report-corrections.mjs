@@ -52,7 +52,7 @@ try {
     await page.getByRole('heading',{name:'Human checks still needed',exact:true}).waitFor();
     assert.equal(await page.locator('#findings h4').count(),new Set(accessibilityReport.findings.map(f=>f.rule+':'+f.disposition)).size);
     assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),'Report overflows viewport');
-    await page.locator('#findings').scrollIntoViewIfNeeded();
+    await page.locator('#findings').evaluate(element=>element.scrollIntoView({block:'start'}));
     const shot=await page.screenshot({path:`${destination}/${name}.jpg`,type:'jpeg',quality:65});
     if(name==='desktop')console.log('REPORT_SCREENSHOT_BASE64 '+shot.toString('base64'));
     assert.deepEqual(errors,[],'Report raised script errors');
