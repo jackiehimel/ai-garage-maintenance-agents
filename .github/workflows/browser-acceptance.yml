@@ -1,0 +1,32 @@
+name: Browser acceptance and interface evidence
+on:
+  push:
+    branches: [codex/finish-browser-acceptance]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  interface:
+    name: Existing interface screenshots
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24.22.1'
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - run: npm run build
+      - run: node --check scripts/capture-interface.mjs
+      - name: Capture actual desktop and mobile interface
+        run: node scripts/capture-interface.mjs
+        env:
+          CHROME_PATH: /usr/bin/google-chrome
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: existing-interface-${{ github.sha }}
+          path: acceptance-artifacts/interface
+          retention-days: 7
+          if-no-files-found: error
