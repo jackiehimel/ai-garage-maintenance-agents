@@ -43,7 +43,24 @@ try {
   });
   await fixture('repeated-focus-is-observation','<button id="a" onkeydown="if(event.key===\'Tab\')event.preventDefault()">Repeated focus</button><button id="b">Other control</button>',async result=>{
     assert(result.steps.length<=50);assert(result.steps.some(s=>s.focus?.selector==='#a'));
+    assert.equal(result.termination,'repeat','Returning to the same element must still stop a repeated sequence');
     assert.equal(result.findings,undefined,'Probe must not invent confirmed WCAG failures');
+  });
+  const nestedCollisions=Array.from({length:42},()=>'<section>'+ '<div>'.repeat(9)+'<button>Identical label</button>'+'</div>'.repeat(9)+'</section>').join('');
+  await fixture('distinct-elements-with-colliding-display-paths',nestedCollisions,async result=>{
+    assert.equal(result.status,'complete');assert.equal(result.termination,'step-limit');
+    assert.equal(result.steps.filter(s=>s.key==='Tab').length,40,'Colliding display paths must not stop forward sampling');
+    assert.equal(result.steps.filter(s=>s.key==='Shift+Tab').length,10);
+    assert.equal(new Set(result.steps.map(s=>s.focus?.selector)).size,1,'Fixture must actually produce colliding truncated paths');
+    assert(result.steps.every(s=>s.focus?.labelHint==='Identical label'));
+  });
+  const shadowCollisions='<div id="hosts"></div><script>for(let i=0;i<42;i++){const host=document.createElement("div");document.getElementById("hosts").append(host);host.attachShadow({mode:"open"}).innerHTML="<button id=shared>Identical label</button>";}</script>';
+  await fixture('distinct-shadow-host-elements-with-colliding-display-paths',shadowCollisions,async result=>{
+    assert.equal(result.status,'complete');assert.equal(result.termination,'step-limit');
+    assert.equal(result.steps.filter(s=>s.key==='Tab').length,40,'Elements in separate shadow roots must have distinct identities');
+    assert.equal(result.steps.filter(s=>s.key==='Shift+Tab').length,10);
+    assert.equal(new Set(result.steps.map(s=>s.focus?.selector)).size,1);
+    assert(result.steps.every(s=>s.focus?.inShadow));
   });
   await fixture('open-shadow-focus','<div id="host"></div><script>const r=document.getElementById("host").attachShadow({mode:"open"});r.innerHTML="<button id=shadow-button>Shadow button</button>";</script><button>After shadow</button>',async result=>{
     assert(result.steps.some(s=>s.focus?.inShadow),'Open shadow focus was not recorded');

@@ -1,4 +1,4 @@
-import type {Page} from 'playwright';
+import type {JSHandle,Page} from 'playwright';
 import {abortable,deadlineSignal} from '../core/network.js';
 
 export interface KeyboardProbeFocus {
@@ -23,13 +23,18 @@ export const KEYBOARD_SAMPLE_LIMIT = 'Bounded Tab and Shift+Tab sample in the in
 const bounded = (value:string,max:number) => String(value).replaceAll('\0','�').slice(0,max);
 const cap = (value:number|undefined,max:number) => Number.isFinite(value) ? Math.max(1,Math.min(max,Math.floor(value!))) : max;
 
-/** Read only the currently focused element, including open shadow roots, without activating it. */
-async function readFocus(page:Page):Promise<KeyboardProbeFocus|null> {
-  const focus = await page.evaluate(() => {
+interface FocusIdentities {ids:WeakMap<Element,number>;next:number}
+interface FocusReading {focus:KeyboardProbeFocus|null;identity:number|null}
+
+/** The scan-local handle holds actual Element identities without changing the DOM or window. */
+async function readFocus(page:Page,identities:JSHandle<FocusIdentities>):Promise<FocusReading> {
+  const reading = await page.evaluate((identities) => {
     let target = document.activeElement;
     let inShadow = false;
     for (let depth=0;depth<12 && target?.shadowRoot?.activeElement;depth++) {target=target.shadowRoot.activeElement;inShadow=true;}
-    if (!target) return null;
+    if (!target) return {focus:null,identity:null};
+    let identity=identities.ids.get(target);
+    if(identity === undefined) {identity=identities.next++;identities.ids.set(target,identity);}
     const path:string[] = [];
     for (let element:Element|null=target;element && path.length<8;element=element.parentElement) {
       if (element.id && element.id.length<=160) {path.unshift('#'+CSS.escape(element.id));break;}
@@ -42,12 +47,13 @@ async function readFocus(page:Page):Promise<KeyboardProbeFocus|null> {
     const labelled=ids.map(id => root instanceof Document || root instanceof ShadowRoot ? root.getElementById(id)?.textContent?.slice(0,180) ?? '' : '').join(' ').trim();
     const labelHint=(target.getAttribute('aria-label') || labelled || target.getAttribute('alt') || target.textContent || '').replace(/\s+/g,' ').trim().slice(0,180);
     const rect=target.getBoundingClientRect();
-    return {tag:target.localName,selector:(inShadow ? '[shadow] ' : '')+path.join(' > '),labelHint,
+    return {identity,focus:{tag:target.localName,selector:(inShadow ? '[shadow] ' : '')+path.join(' > '),labelHint,
       role:target.getAttribute('role')?.slice(0,120),rect:{x:rect.x,y:rect.y,width:rect.width,height:rect.height},
-      frameBoundary:['iframe','frame','object','embed'].includes(target.localName),inShadow};
-  });
-  return focus ? {...focus,selector:bounded(focus.selector,1200),tag:bounded(focus.tag,80),labelHint:bounded(focus.labelHint,180),
-    ...(focus.role ? {role:bounded(focus.role,120)} : {})} : null;
+      frameBoundary:['iframe','frame','object','embed'].includes(target.localName),inShadow}};
+  },identities);
+  const focus=reading.focus;
+  return {identity:reading.identity,focus:focus ? {...focus,selector:bounded(focus.selector,1200),tag:bounded(focus.tag,80),labelHint:bounded(focus.labelHint,180),
+    ...(focus.role ? {role:bounded(focus.role,120)} : {})} : null};
 }
 
 /** Caller must seal new requests and install the existing public action/navigation guards first. */
@@ -57,8 +63,10 @@ export async function collectKeyboardProbe(page:Page,options:KeyboardProbeOption
   const signal=AbortSignal.any([timer.signal,...(options.signal ? [options.signal] : [])]);
   const result:KeyboardProbe={status:'complete',steps:[],termination:'step-limit',forwardLimit:cap(options.forwardLimit,40),reverseLimit:cap(options.reverseLimit,10),elapsedMs:0,scopeLimit:KEYBOARD_SAMPLE_LIMIT};
   const stop=(termination:KeyboardProbe['termination'],reason:string) => {result.status='incomplete';result.termination=termination;result.reason=bounded(reason,500);};
+  let identities:JSHandle<FocusIdentities>|undefined;
   try {
     signal.throwIfAborted();
+    identities=await abortable(page.evaluateHandle(() => ({ids:new WeakMap<Element,number>(),next:1})),signal);
     const original=await abortable(options.readGuard(),signal);
     const requests=options.getBlockedRequests();
     const safe=async () => {
@@ -68,19 +76,21 @@ export async function collectKeyboardProbe(page:Page,options:KeyboardProbeOption
       }
       return true;
     };
-    let focus=await abortable(readFocus(page),signal);
+    let reading=await abortable(readFocus(page,identities),signal);
+    let focus=reading.focus;
     for(const [key,limit] of [['Tab',result.forwardLimit],['Shift+Tab',result.reverseLimit]] as const) {
-      const seen:string[]=[];
+      const seen:Array<number|null>=[];
       for(let i=0;i<limit;i++) {
         signal.throwIfAborted();
         if(focus?.frameBoundary) {stop('frame-boundary','Stopped at a frame boundary; review keyboard navigation within that content manually.');return result;}
         if(!await safe()) return result;
         await abortable(page.keyboard.press(key),signal);
-        focus=await abortable(readFocus(page),signal);
+        reading=await abortable(readFocus(page,identities),signal);
+        focus=reading.focus;
         result.steps.push({index:result.steps.length+1,key,focus});
         if(!await safe()) return result;
         if(focus?.frameBoundary) {stop('frame-boundary','Stopped at a frame boundary; review keyboard navigation within that content manually.');return result;}
-        seen.push(focus?.selector ?? '(no focused element)');
+        seen.push(reading.identity);
         const length=seen.length;
         // Two identical observed sequences suffice to stop sampling, without diagnosing a trap.
         let repeated=false;
@@ -92,6 +102,10 @@ export async function collectKeyboardProbe(page:Page,options:KeyboardProbeOption
     }
   } catch(error) {
     stop(timer.signal.aborted ? 'timeout' : options.signal?.aborted ? 'aborted' : 'error',error instanceof Error ? error.message : String(error));
-  } finally {timer.stop();result.elapsedMs=Math.round(performance.now()-started);}
+  } finally {
+    // Disposal releases the remote WeakMap; do not extend the bounded sample waiting for transport cleanup.
+    void identities?.dispose().catch(() => {});
+    timer.stop();result.elapsedMs=Math.round(performance.now()-started);
+  }
   return result;
 }

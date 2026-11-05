@@ -8,12 +8,13 @@ async function probe() {
   assert.equal(typeof loaded.collectKeyboardProbe,'function','bounded keyboard probe must be implemented');
   return loaded.collectKeyboardProbe as (page:Page,options:Record<string,unknown>) => Promise<any>;
 }
-function fixture(sequence:string[],settings:{frameAt?:number;failAt?:number;blockedAt?:number;hang?:boolean} = {}) {
+function fixture(sequence:string[],settings:{frameAt?:number;failAt?:number;blockedAt?:number;hang?:boolean;displaySelector?:string} = {}) {
   let offset = 0;
   const keys:string[] = [];
   const page = {
     keyboard:{async press(key:string) {keys.push(key);offset++;if(settings.failAt === offset) throw new Error('Detached document');if(settings.hang) await new Promise(() => {});}},
-    async evaluate() {const tag = settings.frameAt === offset ? 'iframe' : 'button';return {tag,selector:sequence[offset % sequence.length],labelHint:'<img src=x>\0' + 'x'.repeat(1000),rect:{x:0,y:0,width:20,height:20},frameBoundary:tag === 'iframe'};},
+    async evaluateHandle() {return {dispose:async () => {}};},
+    async evaluate() {const tag = settings.frameAt === offset ? 'iframe' : 'button';return {identity:offset % sequence.length,focus:{tag,selector:settings.displaySelector ?? sequence[offset % sequence.length],labelHint:'<img src=x>\0' + 'x'.repeat(1000),rect:{x:0,y:0,width:20,height:20},frameBoundary:tag === 'iframe'}};},
   } as unknown as Page;
   return {page,keys,options:{readGuard:async () => ({blocked:settings.blockedAt === offset ? 1 : 0}),getBlockedRequests:() => 0}};
 }
@@ -51,4 +52,16 @@ test('deadline, abort, and evaluation failures return portable limitations', asy
   assert.equal(failure.steps.length,1);assert.equal(failure.status,'incomplete');assert.match(failure.reason,/Detached document/);
   const controller = new AbortController();controller.abort();const f = fixture(['#a']);
   assert.equal((await run(f.page,{...f.options,signal:controller.signal})).status,'incomplete');assert.equal(f.keys.length,0);
+});
+
+
+test('distinct focus elements with identical truncated display paths do not end sampling early', async () => {
+  const run=await probe();
+  const displaySelector=Array.from({length:8},()=> 'div:nth-of-type(1)').join(' > ')+' > button:nth-of-type(1)';
+  const f=fixture(['deep-branch-a','deep-branch-b','deep-branch-c','deep-branch-d','deep-branch-e'],{displaySelector});
+  const result=await run(f.page,{...f.options,forwardLimit:4,reverseLimit:1});
+  assert.equal(result.termination,'step-limit');
+  assert.equal(f.keys.filter(key=>key==='Tab').length,4);
+  assert.equal(result.steps.length,5);
+  assert.ok(result.steps.every((step:any)=>step.focus.selector===displaySelector));
 });
