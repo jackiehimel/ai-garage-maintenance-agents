@@ -36,11 +36,15 @@ for(const agentId of ['seo-ai-search','accessibility']) {
 const retailReport=await runAgent({agentId:'seo-ai-search',targetUrl:'https://www.homedepot.com/'},{assessment:'off',storageRoot:destination,executablePath:process.env.CHROME_PATH,signal:AbortSignal.timeout(180_000)});
 await writeFile(`${destination}/home-depot.html`,renderReport(retailReport));
 console.log('HOME_DEPOT_RESULT '+JSON.stringify({runId:retailReport.runId,collectionStatus:retailReport.collectionStatus,coverage:retailReport.coverage,findings:retailReport.findings,evidence:retailReport.evidence,diagnostics:retailReport.diagnostics}));
-for(const subject of ['rendered HTML canonical and indexing directives','rendered JSON-LD parse and type observations']) {
-  const check=retailReport.coverage.find(c=>c.subject===subject);
-  assert(check,'Missing retail rendered check: '+subject);
-  assert.equal(check.status,'complete','Retail rendered capture is incomplete: '+JSON.stringify(check));
-}
+const retailMetadata=retailReport.evidence.find(e=>e.kind==='seo.rendered-metadata');
+const retailStructured=retailReport.evidence.find(e=>e.kind==='seo.rendered-structured-data');
+assert.match(retailMetadata?.data?.title??'',/Home Depot/i,'Rendered retail metadata was not captured');
+assert(retailStructured?.data?.blocks?.some(block=>block.status==='parsed'),'Rendered retail JSON-LD was not captured');
+assert(!retailReport.coverage.some(c=>/snapshot size limit|snapshot is missing/.test(c.reason??'')),'Retail SEO snapshot still exceeds its capture budget');
+// A successful snapshot does not prove complete execution: this site uses POST
+// APIs that remain blocked. Keep those limitations visible instead of asserting
+// that capture success makes the entire rendered check complete.
+assert(retailReport.coverage.filter(c=>c.status==='incomplete').every(c=>c.reason),'Every incomplete retail check needs an explicit reason');
 
 // Exercise the actual saved-report UI with fresh measured data, with no new scan
 // or AI provider call and no page response interception.
