@@ -31,11 +31,14 @@ const server=createServer(async(req,res)=>{
       try{input=JSON.parse(Buffer.concat(chunks).toString());validateRequest(input);}catch(error){return json(400,{error:error instanceof Error?error.message:'Invalid input'});}
       if(busy) return json(429,{error:'A check is already running'});
       busy=true;
+      const disconnect=new AbortController();
+      const onClose=()=>{if(!res.writableEnded)disconnect.abort(new Error('Client disconnected'));};
+      res.on('close',onClose);
       try {
-        const report=await runAgent(input,{storageRoot,collector:remote?collectRemote:undefined,signal:AbortSignal.timeout(660_000)});
+        const report=await runAgent(input,{storageRoot,collector:remote?collectRemote:undefined,signal:AbortSignal.any([AbortSignal.timeout(660_000),disconnect.signal])});
         reports.set(report.runId,report);if(reports.size>20)reports.delete(reports.keys().next().value!);
         return json(200,report);
-      } finally {busy=false;}
+      } finally {busy=false;res.off('close',onClose);}
     }
     const match=/^\/api\/runs\/(run_[a-f0-9]{24})\/(report\.html|report\.json|baseline\.json|artifacts\/(art_[a-f0-9]{24}))$/.exec(path);
     if(req.method==='GET' && match) {

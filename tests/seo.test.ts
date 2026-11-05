@@ -114,12 +114,15 @@ test('a redirected URL can be blocked by robots at the submitted path even when 
 });
 
 test('truncated or malformed sitemap data cannot establish that a URL is absent', async () => {
-  const {result} = await fixture({sitemaps:true,sitemap:'<urlset><url><loc>https://example.com/extra</loc></url>'});
-  const sitemap = result.evidence.find(e => e.kind === 'seo.sitemap-membership' && e.scope.page === url);
-  assert.ok(sitemap);
-  assert.equal((sitemap.data as {coverage:string}).coverage,'incomplete');
-  assert.ok(result.coverage.some(c => c.scope.page === url && c.subject === 'sampled sitemap membership' && c.status === 'incomplete'));
-  assert.ok(!result.findings.some(f => f.rule.includes('sitemap') && f.disposition === 'finding'));
+  for (const sitemapXml of ['<urlset><url><loc>https://example.com/extra</loc></url>',
+    '<urlset><sitemap><loc>https://example.com/extra</loc></sitemap></urlset>']) {
+    const {result} = await fixture({sitemaps:true,sitemap:sitemapXml});
+    const sitemap = result.evidence.find(e => e.kind === 'seo.sitemap-membership' && e.scope.page === url);
+    assert.ok(sitemap);
+    assert.equal((sitemap.data as {coverage:string}).coverage,'incomplete');
+    assert.ok(result.coverage.some(c => c.scope.page === url && c.subject === 'sampled sitemap membership' && c.status === 'incomplete'));
+    assert.ok(!result.findings.some(f => f.rule.includes('sitemap') && f.disposition === 'finding'));
+  }
 });
 
 test('crawler-scoped X-Robots-Tag distinguishes a search exclusion from an AI crawler directive', async () => {

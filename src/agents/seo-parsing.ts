@@ -297,9 +297,13 @@ export function readSitemap(xml: string) {
         root = top;
       }
       if (stack.length >= 32) { reason = 'Sitemap XML nesting limit reached'; break; }
-      if (stack.length === 1 && local(name) === (root === 'urlset' ? 'url' : 'sitemap')) {
-        itemCount++;
-        itemHasLoc = false;
+      if (stack.length === 1) {
+        if (local(name) === (root === 'urlset' ? 'url' : 'sitemap')) {
+          itemCount++;
+          itemHasLoc = false;
+        } else if (!name.includes(':') || name.split(':')[0] === stack[0].split(':')[0]) {
+          reason ??= 'Sitemap root contains an unexpected entry element';
+        }
       }
       if (stack.length === 2 && local(name) === 'loc' && local(stack[1]) === (root === 'urlset' ? 'url' : 'sitemap')) {
         if (itemHasLoc) invalidLocations++;

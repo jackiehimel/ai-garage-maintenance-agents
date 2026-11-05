@@ -1,6 +1,9 @@
 name: Live maintenance collection
 run-name: Maintenance ${{ inputs.correlation }}
 on:
+  push:
+    branches: [codex/recovery-live-agents]
+    paths: [.github/workflows/collect.yml]
   workflow_dispatch:
     inputs:
       request:
@@ -17,6 +20,10 @@ jobs:
   collect:
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        agent: [seo-ai-search, accessibility, performance]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -27,11 +34,11 @@ jobs:
       - name: Collect live browser evidence
         run: npm run collect
         env:
-          COLLECT_REQUEST: ${{ inputs.request }}
+          COLLECT_REQUEST: ${{ inputs.request || format('{{"agentId":"{0}","targetUrl":"https://www.solvd.com/"}}', matrix.agent) }}
           CHROME_PATH: /usr/bin/google-chrome
       - uses: actions/upload-artifact@v4
         with:
-          name: collector-result
+          name: collector-result-${{ matrix.agent }}
           path: collector-result.json
           retention-days: 7
           if-no-files-found: error

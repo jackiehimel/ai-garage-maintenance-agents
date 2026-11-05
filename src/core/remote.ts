@@ -37,12 +37,12 @@ export async function collectRemote(request:ValidatedRequest,options:CollectorOp
     }
     const directory=await mkdtemp(join(tmpdir(),'maintenance-worker-'));
     try {
-      await gh(['run','download',String(runId),'--repo',repository,'--name','collector-result','--dir',directory],signal);
+      await gh(['run','download',String(runId),'--repo',repository,'--name',`collector-result-${request.agentId}`,'--dir',directory],signal);
       const raw=await readFile(join(directory,'collector-result.json'));
       if(raw.byteLength>140_000_000) throw new Error('Remote result exceeded size limit');
       const portable=JSON.parse(raw.toString()) as Omit<CollectorResult,'artifacts'> & {artifacts:Array<Omit<RawArtifact,'bytes'> & {bytes:string;encoding:string}>};
       const result:CollectorResult={...portable,artifacts:[]};
-      if(!result.runtime || !Array.isArray(result.coverage) || !Array.isArray(result.evidence) || !Array.isArray(result.findings) || !Array.isArray(result.artifacts)) throw new Error('Remote worker returned an invalid result');
+      if(!result.runtime || !Array.isArray(result.coverage) || !Array.isArray(result.evidence) || !Array.isArray(result.findings) || !Array.isArray(portable.artifacts)) throw new Error('Remote worker returned an invalid result');
       result.artifacts=portable.artifacts.map(a=>{
         if(a.encoding!=='base64'||typeof a.bytes!=='string') throw new Error('Invalid remote artifact encoding');
         return {...a,bytes:Buffer.from(a.bytes,'base64')};

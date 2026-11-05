@@ -26,7 +26,7 @@ const isHtml = (contentType: string | undefined, text: string) => contentType
 
 interface Snapshot {
   url: string; status: number; redirects: readonly RedirectHop[]; headers: IncomingHttpHeaders;
-  html?: string; diagnostics: string[]; reason?: string; networkReason?: string; navigation?: string;
+  html?: string; diagnostics: string[]; reason?: string; networkReason?: string; navigation?: string; finalConfirmed?: boolean;
 }
 interface Renderer {
   browser: string; driver: string;
@@ -83,7 +83,8 @@ async function browserRenderer(request: ValidatedRequest, options: CollectorOpti
       });
       let html: string | undefined;
       let reason: string | undefined;
-      let networkReason: string | undefined;
+      let networkReason = navigation === requested ? undefined : 'Browser started at the verified HTTP redirect destination; the submitted redirect chain was only observed by HTTP.';
+      let finalConfirmed = false;
       try {
         try {
           const navigated = await abortable(page.goto(navigation,{waitUntil:'load',timeout:14_000}),browser.signal);
@@ -96,6 +97,7 @@ async function browserRenderer(request: ValidatedRequest, options: CollectorOpti
             throw new Error(networkReason);
           }
           if (main) browser.scope.lock(location);
+          finalConfirmed = true;
           const contentType = response.headers()['content-type'];
           if (success(response.status()) && (!contentType || isHtml(contentType,''))) {
             const snapshot = await abortable(page.evaluate((limit) => {
@@ -111,12 +113,13 @@ async function browserRenderer(request: ValidatedRequest, options: CollectorOpti
           } else reason = success(response.status()) ? 'Rendered document is not HTML' : `Rendered document returned HTTP ${response.status()}`;
         } catch (error) {
           reason = message(error);
+          if (!finalConfirmed) networkReason = 'Final browser response could not be verified: ' + reason;
         }
         if (!response) throw new Error(reason ?? 'No main document response was returned by Chromium');
         const url = normalizedHttpUrl(page.url()) === normalizedHttpUrl(response.url()) ? page.url() : response.url();
         const redirects = await redirectChain(response).catch((error) => { networkReason = `Browser redirect history incomplete: ${message(error)}`; return []; });
         for (const entry of browser.diagnostics()) if (!before.has(entry)) note(entry);
-        return {url,status:response.status(),headers:response.headers(),redirects,html,reason,networkReason,navigation,diagnostics:[...diagnostics]};
+        return {url,status:response.status(),headers:response.headers(),redirects,html,reason,networkReason,navigation,finalConfirmed,diagnostics:[...diagnostics]};
       } finally { await page.close().catch(() => {}); }
     },
   };
@@ -138,6 +141,8 @@ function networkData(source: HttpResult | Snapshot | FailedSource): JsonObject {
   const contentType = source.headers['content-type'];
   return {url:source.url,status:source.status,redirects,contentType:contentType ? short(contentType) : null,
     ...('navigation' in source && source.navigation ? {navigation:source.navigation} : {}),
+    ...('finalConfirmed' in source ? {finalConfirmed:source.finalConfirmed ?? null} : {}),
+    ...(source.headers.location ? {location:source.headers.location.slice(0,2048)} : {}),
     ...('networkReason' in source && source.networkReason ? {reason:short(source.networkReason)} : {}),
   };
 }
@@ -289,15 +294,16 @@ export async function collectSeoEvidence(
     const network = addEvidence(scope,`seo.${kind}-http`,name,missing ? `${kind} request did not complete` : `${kind} HTTP ${snapshot.status}`,networkData(snapshot));
     const statusCoverage = addCoverage(scope,`${kind} HTTP status and redirects`,missing ? 'unavailable' : snapshot.networkReason ? 'incomplete' : 'complete',missing ? snapshot.error : snapshot.networkReason);
     const header = headerDirectives(missing ? {} : snapshot.headers);
-    const headerCoverage = addCoverage(scope,`${kind} HTTP indexing directives`,missing ? 'unavailable' : header.incomplete ? 'incomplete' : 'complete',
-      missing ? snapshot.error : header.incomplete ? 'HTTP directives exceeded the evidence bounds' : undefined);
+    const confirmed = !missing && snapshot.finalConfirmed !== false;
+    const headerCoverage = addCoverage(scope,`${kind} HTTP indexing directives`,missing ? 'unavailable' : !confirmed || header.incomplete ? 'incomplete' : 'complete',
+      missing ? snapshot.error : !confirmed ? 'Final document response headers could not be verified' : header.incomplete ? 'HTTP directives exceeded the evidence bounds' : undefined);
     let document: DocumentRead | undefined;
     let parseError: string | undefined;
     if (!missing && snapshot.html !== undefined) {
       try { document = readDocument(snapshot.html,snapshot.url); }
       catch (error) { parseError = `HTML parsing did not complete: ${message(error)}`; }
     }
-    const quality = missing ? snapshot.error : snapshot.reason ?? snapshot.networkReason ?? parseError ?? (snapshot.diagnostics.length ? `Render had limited coverage: ${snapshot.diagnostics.join('; ')}` : undefined);
+    const quality = missing ? snapshot.error : snapshot.reason ?? parseError ?? (snapshot.diagnostics.length ? `Render had limited coverage: ${snapshot.diagnostics.join('; ')}` : undefined);
     if (quality && kind === 'rendered') note(quality);
     const metadataCoverage = addCoverage(scope,`${kind} HTML canonical and indexing directives`,!document ? (missing ? 'unavailable' : 'incomplete') :
       quality || document.incomplete ? 'incomplete' : 'complete',quality ?? (!document ? 'No HTML snapshot was available' : document.incomplete ? 'Document metadata exceeded parse limits' : undefined));
@@ -314,7 +320,7 @@ export async function collectSeoEvidence(
       coverage:structuredCoverage.status,format:'JSON-LD; syntax and type observations only',
     });
     return {network,statusCoverage,metadata,metadataCoverage,structured,structuredCoverage,headerCoverage,header,document,
-      url:missing ? undefined : snapshot.url,status:missing ? undefined : snapshot.status,redirects:snapshot.redirects};
+      url:confirmed ? snapshot.url : undefined,status:confirmed ? snapshot.status : undefined,redirects:snapshot.redirects};
   };
 
   const start = openRenderer().then(renderer => ({renderer} as const),error => ({error:message(error)} as const));
@@ -384,7 +390,7 @@ export async function collectSeoEvidence(
     }
 
     const noindex = [
-      ...searchNoindex(source.header.directives),...searchNoindex(render.header.directives),
+      ...searchNoindex(source.status === undefined ? [] : source.header.directives),...searchNoindex(render.status === undefined ? [] : render.header.directives),
       ...searchNoindex(source.document?.directives ?? []),...searchNoindex(render.document?.directives ?? []),
     ];
     if (noindex.length) {
@@ -529,7 +535,7 @@ export async function collectSeoEvidence(
   }
   const renderedFirst = renders[0];
   return {
-    testedUrl:renderedFirst && 'url' in renderedFirst ? renderedFirst.url : 'url' in first ? first.url : request.targetUrl,
+    testedUrl:renderedFirst && 'url' in renderedFirst && renderedFirst.finalConfirmed !== false ? renderedFirst.url : 'url' in first ? first.url : request.targetUrl,
     runtime:{node:process.version,engine:ENGINE,browser:'renderer' in rendered ? rendered.renderer.browser : 'unavailable',
       browserDriver:'renderer' in rendered ? rendered.renderer.driver : undefined},
     coverage,evidence,findings,artifacts:[...artifacts.values()],diagnostics:[...diagnostics],
