@@ -8,9 +8,9 @@
     "typecheck": "tsc --noEmit",
     "test": "tsc -p tsconfig.json && node --test \"dist/tests/*.test.js\"",
     "start": "node dist/app/server.js",
-    "dev": "tsx src/server.ts",
-    "agent": "tsx src/cli.ts",
-    "collect": "tsx src/worker.ts"
+    "dev": "node --import tsx src/server.ts",
+    "agent": "node --import tsx src/cli.ts",
+    "collect": "node --import tsx src/worker.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^1.4.0",

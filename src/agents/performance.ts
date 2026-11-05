@@ -26,7 +26,7 @@ const CDP_TIMEOUT_MS = 6_000;
 const SAMPLE_DRAIN_MS = 2_000;
 const LHR_BYTES = 5_000_000; // At most 75 MB for 15 raw reports.
 const AUXILIARY_BYTES = 14_000_000; // Reserve the rest of the shared 90 MB artifact allowance.
-const STARTUP_TIMEOUT_MS = 14_000;
+const STARTUP_TIMEOUT_MS = 20_000;
 const DESKTOP_THROTTLING = {
   rttMs:40,throughputKbps:10_240,cpuSlowdownMultiplier:1,
   requestLatencyMs:0,downloadThroughputKbps:0,uploadThroughputKbps:0,
@@ -374,8 +374,11 @@ export async function collectPerformance(request: ValidatedRequest,options: Coll
       const {default:puppeteer} = await import('puppeteer-core');
       egress.signal.throwIfAborted();
       browser = await puppeteer.launch({
-        executablePath,headless:true,pipe:true,defaultViewport:null,
-        args:[...egress.chromiumArgs,`--lang=${request.profile.locale}`],
+        // The socket transport waits for Chrome's debugger-ready message before
+        // sending target discovery. The random listener is bound to loopback,
+        // which remains unreachable from page requests through protected egress.
+        executablePath,headless:true,debuggingPort:0,defaultViewport:null,
+        args:[...egress.chromiumArgs,'--remote-debugging-address=127.0.0.1',`--lang=${request.profile.locale}`],
         ignoreDefaultArgs:['--disable-popup-blocking','--no-sandbox'],
         handleSIGINT:false,handleSIGTERM:false,handleSIGHUP:false,
         acceptInsecureCerts:false,timeout:STARTUP_TIMEOUT_MS,protocolTimeout:CDP_TIMEOUT_MS,signal:egress.signal,

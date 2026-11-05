@@ -1,6 +1,7 @@
 import { readFile, writeFile, mkdir } from 'node:fs/promises';
 import { resolve, join } from 'node:path';
 import { runAgent } from './run.js';
+import { collectRemote } from './core/remote.js';
 import { renderReport } from './report.js';
 
 async function main():Promise<void> {
@@ -13,7 +14,7 @@ async function main():Promise<void> {
   const baseline=baselinePath ? JSON.parse(await readFile(baselinePath,'utf8')) as unknown : config.baseline;
   const output=resolve(option('--output') ?? '.runs');
   await mkdir(output,{recursive:true});
-  const report=await runAgent({...config,agentId,targetUrl,baseline},{storageRoot:output,assessment:args.includes('--no-ai')?'off':'live'});
+  const report=await runAgent({...config,agentId,targetUrl,baseline},{storageRoot:output,assessment:args.includes('--no-ai')?'off':'live',collector:process.env.BROWSER_RUNTIME==='github-actions'?collectRemote:undefined});
   const dir=join(output,report.runId);
   await mkdir(dir,{recursive:true});
   await writeFile(join(dir,'report.html'),renderReport(report));
