@@ -54,6 +54,7 @@ jobs:
         run: |
           node --check scripts/browser-acceptance.mjs
           node --check fixtures/browser/page.mjs
+          node --check fixtures/browser/support.mjs
       - name: Run measured isolated fixtures (production egress acceptance remains separate)
         run: node scripts/browser-acceptance.mjs
         env:

@@ -16,6 +16,7 @@ import { createPublicHttpClient } from '../dist/app/core/network.js';
 import { createArtifactId } from '../dist/app/core/store.js';
 import { createEvidence } from '../dist/app/core/evidence.js';
 import { fixtureOrigin, fixturePage, fixtureResponse } from '../fixtures/browser/page.mjs';
+import { relabelFixtureEvidence, requestForFixture } from '../fixtures/browser/support.mjs';
 
 const root = resolve('acceptance-artifacts/fixtures');
 const executablePath = process.env.CHROME_PATH || '/usr/bin/google-chrome';
@@ -72,7 +73,7 @@ async function seo(request, phase) {
       },
       close: async () => {},
     }));
-    for (const item of result.evidence) item.source.name = item.source.name === 'Protected Chromium' ? 'Isolated sandboxed Chromium fixture transport' : 'Isolated fixture HTTP transport (no public egress)';
+    relabelFixtureEvidence(result, createEvidence);
     result.diagnostics.push(limitation);
     return result;
   } finally { client.close(); await context.close(); }
@@ -115,7 +116,7 @@ async function accessibility(request, phase) {
     }
     assert(engine, 'No actual axe result was collected');
     const result = assembleAccessibilityResult(request, { node: process.version, browser: playwrightBrowser.version(), browserDriver: playwrightVersion, engine }, request.targetUrl, scans, [limitation]);
-    for (const item of result.evidence) if (item.source.name === 'Protected Playwright browser') item.source.name = 'Isolated sandboxed Chromium fixture transport';
+    relabelFixtureEvidence(result, createEvidence);
     return result;
   } finally { await context.close(); }
 }
@@ -191,10 +192,7 @@ async function performance(request, phase) {
 
 const collectors = { 'seo-ai-search': seo, accessibility, performance };
 async function reportFor(agentId, phase, baseline) {
-  const request = { agentId, targetUrl: `${fixtureOrigin}/${agentId}`, ...(baseline ? { baseline } : {}),
-    ...(agentId === 'seo-ai-search' ? { indexIntent: [{ page: `/${agentId}`, intended: 'indexable' }] } : {}),
-    ...(agentId === 'accessibility' ? { states: [{ id: 'keyboard', page: `/${agentId}`, steps: [{ action: 'key', key: 'Tab' }, { action: 'key', key: 'Tab' }, { action: 'key', key: 'Tab' }, { action: 'assert-focus', selector: '#keyboard-target' }] }] } : {}),
-  };
+  const request = requestForFixture(agentId, fixtureOrigin, baseline);
   const report = await runAgent(request, { assessment: 'off', storageRoot: resolve(root, 'runs'), collector: validated => collectors[agentId](validated, phase) });
   await save(`${agentId}-${phase}.json`, report);
   await writeFile(resolve(root, `${agentId}-${phase}.html`), renderReport(report));
@@ -242,7 +240,7 @@ try {
     const incompatibleBaseline = structuredClone(before.baseline);
     incompatibleBaseline.identity.runtime.browser += '-deliberately-incompatible';
     // Reuse actual after measurements only to test baseline compatibility, explicitly labeled.
-    const incompatible = await runAgent({ ...after.configuration, baseline: incompatibleBaseline }, { assessment: 'off', collector: async () => ({ testedUrl: after.testedUrl, runtime: after.runtime, coverage: after.coverage, evidence: after.evidence, findings: after.findings, measurements: after.measurements, artifacts: [], diagnostics: [limitation, 'Compatibility-only replay of the retained after measurements; no new browser run.'] }) });
+    const incompatible = await runAgent(requestForFixture(agentId, fixtureOrigin, incompatibleBaseline), { assessment: 'off', collector: async () => ({ testedUrl: after.testedUrl, runtime: after.runtime, coverage: after.coverage, evidence: after.evidence, findings: after.findings, measurements: after.measurements, artifacts: [], diagnostics: [limitation, 'Compatibility-only replay of the retained after measurements; no new browser run.'] }) });
     assert.equal(incompatible.comparison.status, 'incompatible');
     await save(`${agentId}-incompatible-replay.json`, incompatible);
     manifest.checks.push({ agentId, before: before.runId, after: after.runId, incomplete: incomplete.runId, beforeStatus: before.collectionStatus, afterStatus: after.collectionStatus, incompleteStatus: incomplete.collectionStatus, compatibilityReplay: incompatible.comparison.status, checksPassed: true });
@@ -264,4 +262,5 @@ try {
   manifest.completedAt = new Date().toISOString();
   await Promise.allSettled([playwrightBrowser?.close(), performanceBrowser?.close()]);
   await save('acceptance-manifest.json', manifest);
+  console.log('MAINTENANCE_FIXTURE_SUMMARY ' + JSON.stringify(manifest));
 }

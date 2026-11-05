@@ -4,6 +4,7 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import { chromium } from 'playwright';
+import { requireFetchOk } from '../fixtures/browser/support.mjs';
 
 // Capture the unchanged public/ interface served by the actual compiled server.
 // No interception, synthetic reports, provider keys, or modified UI assets.
@@ -74,13 +75,20 @@ try {
     assert.equal(report.assessment.status, 'unavailable', 'This CI job supplies no model credentials');
     assert(report.coverage.length > 0, 'A real returned run must describe observed or unavailable coverage');
     assert(report.coverage.some(entry => ['complete', 'incomplete', 'unavailable'].includes(entry.status)), 'No meaningful collection coverage status');
+    console.log('MAINTENANCE_LIVE_REPORT_SUMMARY ' + JSON.stringify({
+      runId: report.runId, agentId: report.agentId, collectionStatus: report.collectionStatus,
+      evidenceCount: report.evidence.length, findingCount: report.findings.length,
+      coverage: report.coverage.map(({ subject, status, reason }) => ({ subject, status, ...(reason ? { reason } : {}) })),
+      assessment: { status: report.assessment.status },
+      ...(report.measurements?.navigation?.pages ? { performanceSamples: report.measurements.navigation.pages.map(({ page, planned, attempted, succeeded, failed, notRun }) => ({ page, planned, attempted, completed: succeeded, failed, notRun })) } : {}),
+    }));
     await page.locator('#report-title').waitFor();
     await page.locator('#assessment').getByText('Assessment unavailable.', { exact: true }).waitFor();
     const jsonResponse = await fetch(`${origin}/api/runs/${report.runId}/report.json`);
-    assert(jsonResponse.ok());
+    requireFetchOk(jsonResponse, 'JSON report export failed');
     assert.deepEqual(await jsonResponse.json(), report, 'JSON export must match UI response');
     const htmlResponse = await fetch(`${origin}/api/runs/${report.runId}/report.html`);
-    assert(htmlResponse.ok());
+    requireFetchOk(htmlResponse, 'HTML report export failed');
     const html = await htmlResponse.text();
     assert(html.includes(report.runId), 'HTML export must identify the same run');
     assert(html.includes('Assessment unavailable.'), 'HTML must disclose unavailable AI');
@@ -88,7 +96,7 @@ try {
     await writeFile(resolve(destination, `${captureAgent}-report.html`), html);
     for (const artifact of report.artifacts) {
       const exported = await fetch(`${origin}/api/runs/${report.runId}/artifacts/${artifact.id}`);
-      assert(exported.ok(), `Retained raw artifact unavailable: ${artifact.id}`);
+      requireFetchOk(exported, `Retained raw artifact unavailable: ${artifact.id}`);
       await writeFile(resolve(destination, artifact.id), Buffer.from(await exported.arrayBuffer()));
     }
     await page.locator('#report-title').scrollIntoViewIfNeeded();
