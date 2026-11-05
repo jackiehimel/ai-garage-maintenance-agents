@@ -3,6 +3,12 @@ on:
   push:
     branches: [codex/finish-browser-acceptance]
   workflow_dispatch:
+    inputs:
+      capture_live_reports:
+        description: Capture actual Solvd reports with AI explicitly unavailable
+        required: false
+        type: boolean
+        default: true
 permissions:
   contents: read
 jobs:
@@ -27,6 +33,65 @@ jobs:
         if: always()
         with:
           name: existing-interface-${{ github.sha }}
+          path: acceptance-artifacts/interface
+          retention-days: 7
+          if-no-files-found: error
+  fixtures:
+    name: Isolated real browser before and after fixtures
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24.22.1'
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+      - name: Check acceptance script syntax
+        run: |
+          node --check scripts/browser-acceptance.mjs
+          node --check fixtures/browser/page.mjs
+      - name: Run measured isolated fixtures (production egress acceptance remains separate)
+        run: node scripts/browser-acceptance.mjs
+        env:
+          CHROME_PATH: /usr/bin/google-chrome
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: isolated-browser-fixtures-${{ github.sha }}
+          path: acceptance-artifacts/fixtures
+          retention-days: 7
+          if-no-files-found: error
+  live-interface:
+    name: Actual ${{ matrix.agent }} report in existing UI
+    if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.capture_live_reports)
+    runs-on: ubuntu-latest
+    timeout-minutes: 14
+    strategy:
+      fail-fast: false
+      matrix:
+        agent: [seo-ai-search, accessibility, performance]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24.22.1'
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - run: npm run build
+      - run: node --check scripts/capture-interface.mjs
+      - name: Capture independently invoked real Solvd report
+        run: node scripts/capture-interface.mjs
+        env:
+          CHROME_PATH: /usr/bin/google-chrome
+          CAPTURE_AGENT: ${{ matrix.agent }}
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: actual-solvd-ui-${{ matrix.agent }}-${{ github.sha }}
           path: acceptance-artifacts/interface
           retention-days: 7
           if-no-files-found: error

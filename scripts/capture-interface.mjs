@@ -61,7 +61,8 @@ try {
   if (captureAgent) {
     const page = await browser.newPage({ viewport: { width: 1440, height: 1100 }, serviceWorkers: 'block' });
     await page.goto(origin, { waitUntil: 'networkidle' });
-    await page.locator(`input[name="agent"][value="${captureAgent}"]`).check();
+    await page.locator(`label.agent-option:has(input[name="agent"][value="${captureAgent}"])`).click();
+    assert(await page.locator(`input[name="agent"][value="${captureAgent}"]`).isChecked(), 'Visible agent choice did not select its radio');
     await page.locator('#target-url').fill('https://www.solvd.com/');
     const returned = page.waitForResponse(response => response.url() === `${origin}/api/run` && response.request().method() === 'POST', { timeout: 670_000 });
     await page.locator('#run-button').click();
