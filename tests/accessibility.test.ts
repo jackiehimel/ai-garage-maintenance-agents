@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import {execFileSync} from 'node:child_process';
 import test from 'node:test';
 import {runInNewContext} from 'node:vm';
 import type { AxeResults, NodeResult, Result } from 'axe-core';
@@ -262,4 +263,52 @@ test('sealed action guard prevents popup, dialog, history and cancelable navigat
   assert.equal(window.dispatchEvent(click),false);
   assert.equal(effects,0);
   assert.equal(guard.read().blocked,8);
+});
+
+
+test('the source worker runtime serializes an executable self-contained action guard', () => {
+  // Exercise the same TSX import path as npm run collect; compiled-only tests
+  // cannot expose bundler helpers captured by Function.toString().
+  const output=execFileSync(process.execPath,['--import','tsx','--input-type=module','--eval',`
+    import assert from 'node:assert/strict';
+    import {runInNewContext} from 'node:vm';
+    import {publicAccessibilityGuardScript} from './src/agents/accessibility.ts';
+    import {collectKeyboardProbe} from './src/agents/accessibility-probe.ts';
+    const window=new EventTarget();
+    const navigation=new EventTarget();
+    let effects=0;
+    Object.assign(window,{open(){effects++;},alert(){effects++;},confirm(){effects++;},prompt(){effects++;},navigation});
+    const history={pushState(){effects++;},replaceState(){effects++;}};
+    class Form {submit(){effects++;}requestSubmit(){effects++;}}
+    class Document {activeElement=null;getElementById(){return {textContent:'Observed label'};}}
+    class ShadowRoot {}
+    const document=new Document();
+    const sandbox={window,document,HTMLFormElement:Form,history,Document,ShadowRoot,CSS:{escape(value){return value;}}};
+    runInNewContext(publicAccessibilityGuardScript('sourceGuard'),sandbox);
+    const guard=Reflect.get(window,'sourceGuard');
+    assert.equal(typeof guard.read,'function');
+    guard.seal();
+    for(const name of ['open','alert','confirm','prompt']) Reflect.get(window,name)();
+    history.pushState();history.replaceState();
+    new Form().submit();new Form().requestSubmit();
+    assert.equal(navigation.dispatchEvent(new Event('navigate',{cancelable:true})),false);
+    assert.equal(window.dispatchEvent(new Event('click',{cancelable:true})),false);
+    assert.equal(effects,0);
+    assert.equal(guard.read().blocked,10);
+    const target={id:'focused',localName:'button',parentElement:null,shadowRoot:null,getRootNode(){return document;},
+      getAttribute(name){return name==='aria-labelledby' ? 'label' : null;},getBoundingClientRect(){return {x:0,y:0,width:10,height:10};}};
+    document.activeElement=target;
+    let serializedCallbacks=0;
+    const execute=(callback,arg)=>{serializedCallbacks++;return runInNewContext('('+callback.toString()+')',sandbox)(arg);};
+    const page={keyboard:{async press(){}},
+      async evaluateHandle(callback){return {value:execute(callback),async dispose(){}};},
+      async evaluate(callback,handle){return execute(callback,handle.value);}};
+    const result=await collectKeyboardProbe(page,{readGuard:async()=>({blocked:0}),getBlockedRequests:()=>0,forwardLimit:3,reverseLimit:2});
+    assert.equal(result.status,'complete');assert.equal(result.termination,'repeat');
+    assert.equal(result.steps[0].focus.labelHint,'Observed label');
+    assert.equal(result.steps[0].focus.selector,'#focused');
+    assert(serializedCallbacks>=4);
+    console.log('SOURCE_GUARD_AND_PROBE_CALLBACKS_EXECUTED');
+  `],{encoding:'utf8',timeout:5000});
+  assert.match(output,/SOURCE_GUARD_AND_PROBE_CALLBACKS_EXECUTED/);
 });

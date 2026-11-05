@@ -446,17 +446,17 @@ function installReadOnlyGuard(key:string, permits:typeof activationPermitted):vo
   }
   // Seal scripted popup, dialog, synthetic click and same-document navigation before sampling.
   const nativeOpen = window.open;
-  Object.defineProperty(window,'open',{configurable:false,writable:false,value:function(...args:Parameters<typeof window.open>) {if(sealed) {handlers.deny();return null;}return nativeOpen.apply(window,args);}});
+  Object.defineProperty(window,'open',{configurable:false,writable:false,value(...args:Parameters<typeof window.open>) {if(sealed) {handlers.deny();return null;}return nativeOpen.apply(window,args);}});
   for (const name of ['alert','confirm','prompt'] as const) {
     const original=window[name]?.bind(window);
     if (!original) continue;
-    Object.defineProperty(window,name,{configurable:false,writable:false,value:(...args:unknown[]) => {if(sealed) {handlers.deny();return name === 'confirm' ? false : null;}return Reflect.apply(original,window,args);}});
+    Object.defineProperty(window,name,{configurable:false,writable:false,value(...args:unknown[]) {if(sealed) {handlers.deny();return name === 'confirm' ? false : null;}return Reflect.apply(original,window,args);}});
   }
   window.addEventListener('click',event => {if(sealed) handlers.deny(event);},true);
   for (const name of ['pushState','replaceState'] as const) {
     if (typeof history === 'undefined') break;
     const original=history[name].bind(history);
-    Object.defineProperty(history,name,{configurable:false,writable:false,value:(...args:Parameters<History[typeof name]>) => {if(sealed) {handlers.deny();return;}return Reflect.apply(original,history,args);}});
+    Object.defineProperty(history,name,{configurable:false,writable:false,value(...args:Parameters<History[typeof name]>) {if(sealed) {handlers.deny();return;}return Reflect.apply(original,history,args);}});
   }
   const navigation=Reflect.get(window,'navigation') as EventTarget|undefined;
   navigation?.addEventListener('navigate',event => {if(sealed && event.cancelable) handlers.deny(event);});

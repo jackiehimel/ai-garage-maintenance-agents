@@ -19,6 +19,22 @@ jobs:
       - run: npm run typecheck
       - run: npm test
       - run: npm run build
+      - name: Live accessibility worker entrypoint
+        run: |
+          npm run collect
+          node --input-type=module <<'JS'
+          import assert from 'node:assert/strict';
+          import {readFile} from 'node:fs/promises';
+          const result=JSON.parse(await readFile('collector-result.json','utf8'));
+          assert.equal(result.coverage.find(c=>c.subject==='axe-core scan')?.status,'complete','The actual worker entrypoint did not finish axe');
+          const sample=result.measurements?.keyboardProbe?.scopes?.[0];
+          assert(sample?.steps?.some(step=>step.focus),'The actual worker entrypoint recorded no focused element');
+          assert.equal(sample.status,'complete',sample.reason);
+          console.log('LIVE_WORKER_VERIFIED '+JSON.stringify({findings:result.findings.length,keyboardStatus:sample.status,steps:sample.steps.length}));
+          JS
+        env:
+          CHROME_PATH: /usr/bin/google-chrome
+          COLLECT_REQUEST: '{"agentId":"accessibility","targetUrl":"https://solvd.com/"}'
       - name: Assisted accessibility browser fixtures
         run: node scripts/verify-accessibility-assisted.mjs
         env:
