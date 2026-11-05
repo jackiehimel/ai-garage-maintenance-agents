@@ -530,7 +530,8 @@ form.addEventListener('submit', async (event) => {
   if (activeRun) return;
   runError.hidden = true;
   runError.textContent = '';
-  runStatus.textContent = '';
+  const previousReportStatus = reportPanel.hidden ? '' : 'Showing the previous report.';
+  runStatus.textContent = previousReportStatus;
   const targetUrl = urlField.value.trim();
   if (!/^https:\/\/[^/@?#:\s\\]+(?:[/?#][^\u0000-\u0020\u007f\\]*)?$/i.test(targetUrl)) {
     showError('Enter a public HTTPS URL without credentials or an explicit port.');
@@ -549,7 +550,7 @@ form.addEventListener('submit', async (event) => {
   activeRun = current;
   setBusy(true);
   let stage = 'preparing';
-  runStatus.textContent = 'Preparing the run request…';
+  runStatus.textContent = `Preparing the run request… ${previousReportStatus}`.trimEnd();
   try {
     const request = { ...parseConfiguration(input), agentId, targetUrl };
     if (selectedBaseline) request.baseline = selectedBaseline;
@@ -558,16 +559,23 @@ form.addEventListener('submit', async (event) => {
     const body = JSON.stringify(request);
     if (new Blob([body]).size > maxRequestBytes) throw new Error('Configuration and baseline together exceed the 3 MB request limit.');
     stage = 'running';
-    reportPanel.hidden = true;
-    reportPanel.replaceChildren();
     const worker = runtimeMode === 'github-actions' ? ' through GitHub Actions' : '';
-    runStatus.textContent = `Requested ${agents[agentId].title}${worker}. Waiting for the report…`;
+    runStatus.textContent = `Requested ${agents[agentId].title}${worker}. Waiting for the report… ${previousReportStatus}`.trimEnd();
     const response = await fetch('/api/run', {
       method: 'POST', credentials: 'same-origin', cache: 'no-store',
       headers: { 'Content-Type': 'application/json' },
       signal: current.controller.signal, body,
+    }).catch((error) => {
+      if (error?.name === 'AbortError') throw error;
+      throw new Error('Could not reach the local demo service. This run was not verified. Check that the demo is running and try again.');
     });
-    const result = await response.json().catch(() => null);
+    const result = await response.json().catch((error) => {
+      if (error?.name === 'AbortError') throw error;
+      if (error?.name === 'TypeError') {
+        throw new Error('The connection to the local demo service was interrupted before the report arrived. This run was not verified. Try again when the demo is available.');
+      }
+      return null;
+    });
     if (activeRun !== current) return;
     if (!response.ok) {
       const description = typeof result?.error === 'string' ? result.error : typeof result?.message === 'string' ? result.message : '';
@@ -582,7 +590,7 @@ form.addEventListener('submit', async (event) => {
     runStatus.textContent = reportStatus('Report returned', result);
   } catch (error) {
     if (activeRun !== current) return;
-    runStatus.textContent = '';
+    runStatus.textContent = previousReportStatus;
     showError(error instanceof Error && error.name !== 'AbortError' ? error.message : 'The run did not return a report.');
     if (stage === 'preparing') {
       advanced.open = true;
@@ -677,19 +685,19 @@ async function loadSavedReport() {
 async function checkRuntime() {
   try {
     const response = await fetch('/api/health', { cache: 'no-store', credentials: 'same-origin' });
-    if (!response.ok) return;
-    const health = await response.json();
-    runtimeMode = health.runtime?.mode;
-    if (runtimeMode === 'github-actions') {
-      runtimeState.textContent = 'Collection runs on GitHub Actions. The target URL and optional collection settings are sent to the configured worker.';
-    } else if (runtimeMode === 'local') {
-      runtimeState.textContent = 'Collection runs on the local server.';
+    const health = response.ok ? await response.json() : null;
+    const mode = health?.status === 'ok' && health.runtime?.mode;
+    if (mode === 'github-actions') {
+      runtimeState.textContent = 'Collection is configured to run on GitHub Actions. The target URL and optional collection settings are sent to the configured worker.';
+    } else if (mode === 'local') {
+      runtimeState.textContent = 'Collection is configured to run on the local server.';
+    } else {
+      throw new Error('Unexpected health response.');
     }
-    if (health.runtime?.browserReady === false) {
-      runtimeState.append(' Browser readiness is not confirmed. A run may return limited evidence.');
-    }
+    runtimeMode = mode;
+    runtimeState.append(' Browser availability is checked during the run.');
   } catch {
-    // The run request provides an actionable server response if the health check is unavailable.
+    runtimeState.textContent = 'Could not confirm a connection to the local demo service at page load. Running a check will try again.';
   }
 }
 
