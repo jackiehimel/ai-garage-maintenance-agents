@@ -176,3 +176,16 @@ input[type="file"]::file-selector-button { padding: 7px 9px; margin-right: 8px; 
   .agent-option input:checked + .agent-card { border-width: 2px; }
   .agent-option input:checked + .agent-card .radio-indicator::before { background: Highlight; }
 }
+
+.finding-category { margin-top: 24px; }
+.finding-category > p, .finding-group > p, .finding-group .details-grid { max-width: 78ch; }
+.finding-group { padding: 20px 0; }
+.finding-group h4 { font-size: 1.08rem; color: var(--green-deep); }
+.affected-details > summary, .supporting-details > summary, .ai-draft > summary { padding: 10px 0; font-weight: 650; color: var(--accent); }
+.affected-instance { padding: 14px; margin-top: 12px; border: 1px solid var(--rule); border-radius: 8px; background: var(--paper); }
+.affected-instance p, .affected-instance code, .details-grid dd { min-width: 0; overflow-wrap: anywhere; }
+.ai-draft { margin-top: 8px; }
+@media (max-width: 540px) {
+  .finding-group .details-grid { grid-template-columns: minmax(0, 1fr); gap: 4px; font-size: .94rem; }
+  .finding-group .details-grid dd { margin-bottom: 10px; }
+}

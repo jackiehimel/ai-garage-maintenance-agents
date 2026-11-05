@@ -12,7 +12,7 @@ const noindex = '<meta name="robots" content="noindex, follow">';
 const template = (head = '') => '<!doctype html><html><head>' + head + '</head><body>Test</body></html>';
 const runtime = { browser: '120.0.0.0', driver: '1.63.0' };
 
-async function fixture(options: { intent?: 'indexable'|'excluded'; source?: string; render?: string|null; search?: boolean; sitemaps?: boolean; redirect?: boolean; robots?: string; sitemap?: string; headers?: Record<string,string>; provisionalBrowser?: boolean; renderFailure?: boolean; sitemapIndex?: string; requestFailures?: import('../src/core/browser.js').BrowserFailureDiagnostics } = {}) {
+async function fixture(options: { intent?: 'indexable'|'excluded'; source?: string; render?: string|null; search?: boolean; sitemaps?: boolean; redirect?: boolean; robots?: string; sitemap?: string; headers?: Record<string,string>; provisionalBrowser?: boolean; renderFailure?: boolean; sitemapIndex?: string; diagnostics?: string[]; requestFailures?: import('../src/core/browser.js').BrowserFailureDiagnostics } = {}) {
   const request = validateRequest({
     agentId: 'seo-ai-search', targetUrl: url, pages: [extra],
     indexIntent: options.intent ? [{page:url,intended:options.intent}] : [],
@@ -46,7 +46,7 @@ async function fixture(options: { intent?: 'indexable'|'excluded'; source?: stri
         if (options.render === null) throw new Error('Rendered fixture unavailable');
         if (page === url && options.provisionalBrowser) return {url:'https://example.com/intermediate',status:302,redirects:[],headers:{location:'https://blocked.example/'},diagnostics:[],reason:'Navigation blocked',networkReason:'No final document',finalConfirmed:false};
         const html = page === url ? template(options.render ?? options.source) : template();
-        return {url:page,status:200,redirects:[],headers:{},html,diagnostics:options.requestFailures ? ['Unknown browser request failure'] : [],requestFailures:options.requestFailures};
+        return {url:page,status:200,redirects:[],headers:{},html,diagnostics:options.diagnostics ?? [],requestFailures:options.requestFailures};
       },
       close: async () => {},
     }));
@@ -250,4 +250,47 @@ test('failed main navigation retains request failure identities in SEO evidence'
   const http = result.evidence.find(e => e.kind === 'seo.rendered-http' && e.scope.page === url)!;
   assert.deepEqual((http.data as Record<string,unknown>).requestFailures,requestFailures);
   assert.equal(result.coverage.find(c => c.subject === 'rendered HTTP status and redirects' && c.scope.page === url)?.status,'unavailable');
+});
+
+
+test('only exact observed reporting blocks and ordinary non-content assets preserve metadata coverage', async () => {
+  const reporting = ['https://analytics.google.com/g/collect','https://stats.g.doubleclick.net/g/collect',
+    'https://www.google.com/g/collect','https://www.google.com/ccm/collect',
+    'https://ad.doubleclick.net/ccm/s/collect','https://www.google.com/rmkt/collect/123/'];
+  const failures = reporting.map(url=>({method:'POST',url,resourceType:'fetch',mainDocument:false,reason:'Browser method blocked'}));
+  failures.push({method:'GET',url:'https://ad.doubleclick.net/ccm/s/collect',resourceType:'image',mainDocument:false,reason:'failed: net::ERR_BLOCKED_BY_CLIENT.Inspector'});
+  for (const resourceType of ['image','media','font','ping']) failures.push({method:'GET',url:'https://example.com/asset',resourceType,mainDocument:false,reason:'returned HTTP 404'});
+  const {result} = await fixture({requestFailures:{failures,overflow:0},diagnostics:['Browser method blocked']});
+  for (const page of [url,extra]) {
+    assert.equal(result.coverage.find(c=>c.subject === 'rendered HTML canonical and indexing directives' && c.scope.page === page)?.status,'complete');
+    assert.equal(result.coverage.find(c=>c.subject === 'rendered JSON-LD parse and type observations' && c.scope.page === page)?.status,'complete');
+    const data = result.evidence.find(e=>e.kind === 'seo.rendered-http' && e.scope.page === page)!.data as Record<string,unknown>;
+    assert.deepEqual(data.requestFailures,{failures,overflow:0});
+    assert.ok((data.requestFailureImpact as Array<{impact:string;reason:string}>).every(f=>f.impact === 'non-content' && f.reason.length>0));
+  }
+});
+
+test('unknown, spoofed, security, unaccounted and overflow failures still limit rendered observations', async () => {
+  const base = {method:'POST',url:'https://analytics.google.com/g/collect',resourceType:'fetch',mainDocument:false,reason:'Browser method blocked'};
+  const invalid = [
+    {...base,url:'https://analytics.google.com.attacker.example/g/collect'},
+    {...base,url:'https://analytics.google.com/g/collect/extra'},
+    {...base,url:'https://analytics.google.com:443/g/collect'},
+    {...base,url:'HTTPS://analytics.google.com:443/g/collect'},
+    {...base,url:'https://user@analytics.google.com/g/collect'},
+    {...base,url:'http://analytics.google.com/g/collect'},
+    {...base,url:'https://example.com/api'},
+    {...base,resourceType:'script'}, {...base,resourceType:'stylesheet'},
+    {...base,resourceType:'document'}, {...base,resourceType:'unknown'}, {...base,mainDocument:true},
+    {...base,reason:'Private address blocked'},
+    {...base,method:'GET',resourceType:'media',reason:'Browser method blocked'},
+  ];
+  for (const requestFailures of [...invalid.map(f=>({failures:[f],overflow:0})),{failures:[base],overflow:1},{failures:[],overflow:0},undefined]) {
+    const {result} = await fixture({requestFailures,diagnostics:['Browser method blocked']});
+    assert.equal(result.coverage.find(c=>c.subject === 'rendered HTML canonical and indexing directives' && c.scope.page === url)?.status,'incomplete');
+  }
+  for (const reason of ['Page script error: failed','Browser request budget exceeded']) {
+    const {result} = await fixture({requestFailures:{failures:[base],overflow:0},diagnostics:[reason]});
+    assert.equal(result.coverage.find(c=>c.subject === 'rendered JSON-LD parse and type observations' && c.scope.page === url)?.status,'incomplete');
+  }
 });

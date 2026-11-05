@@ -2,6 +2,16 @@
 
 Research date: 2026-11-05. Scope: the stored Solvd run, renderer coverage, and sampled sitemap membership. No production changes or live rerun were performed for this note.
 
+## Follow-up verification and classification
+
+The coordinating agent subsequently ran the protected collector at commit `ccb5f4ca` in [Actions 42104490674](https://github.com/jackiehimel/ai-garage-maintenance-agents/actions/runs/42104490674). Positive sampled sitemap membership was complete, with incomplete traversal separately retained. Accessibility reproduced the same ten automatic instances and sixty-two inconclusive instances described below.
+
+Retained browser identities identified blocked POST reporting traffic to `analytics.google.com/g/collect`, `stats.g.doubleclick.net/g/collect`, `www.google.com/g/collect`, `www.google.com/ccm/collect`, `ad.doubleclick.net/ccm/s/collect`, and `www.google.com/rmkt/collect/646651083/`. An image request to the DoubleClick endpoint was blocked by Chromium ORB, and an MP4 request was aborted. These observations come from that trace, not from the AI assessment.
+
+[Google's Analytics troubleshooting guide](https://developers.google.com/analytics/devguides/collection/ga4/troubleshoot) explicitly identifies `analytics.google.com/g/collect` as event reporting. [Google's CSP guide](https://developers.google.com/tag-platform/security/guides/csp) identifies the observed Google/DoubleClick hosts as Analytics, Ads, and Floodlight destinations. The other exact path classifications are a narrow inference from the observed trace and vendor destinations, not a documented stable API contract. Exact host/path/method/resource-type matching is therefore required; unknown destinations and content requests must remain limiting. Reporting POSTs remain blocked. This affects only the interpretation of SEO metadata coverage, not network permission or a claim that tracking succeeded.
+
+Media/image playback is outside the renderer's original HTML canonical/indexing/JSON-LD diagnostic scope. Instrumentation should retain these events without silently broadening that scope. A failed document, script, stylesheet, unknown API, unaccounted guard error, or truncated diagnostic record remains a coverage limitation. These are implementation scope decisions, not proof that arbitrary applications are fully hydrated.
+
 ## Verified local evidence
 
 The original evidence is `.runs/run_4442d7a6ec2ac6fd5e061b8f/report.json` and its sole raw artifact, `art_bc9f174cba3dcd3e64958a93` (167-byte robots.txt). That artifact allows all user agents and declares `https://solvd.com/sitemap_index.xml`; it contains no browser request log or HTML snapshot.
