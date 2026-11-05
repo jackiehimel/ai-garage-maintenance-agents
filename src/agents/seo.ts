@@ -107,6 +107,37 @@ export function observeSeoRequestFailures(page: Page, note: (reason: string) => 
   return failures;
 }
 
+// This function is serialized into the page; keep it independent of module state.
+export function captureSeoDocument(limit: number): {html?:string;reason?:string} {
+  if (!document.documentElement || !document.head) return {reason:'Rendered SEO document root or head is missing'};
+  const robots = new Set(['robots','googlebot','bingbot','gptbot','oai-searchbot','chatgpt-user','claudebot',
+    'claude-searchbot','perplexitybot','applebot','google-extended','ccbot','googlebot-news','googlebot-image']);
+  const escape = (value: string) => value.replaceAll('&','&amp;').replaceAll('"','&quot;').replaceAll('<','&lt;').replaceAll('>','&gt;');
+  let html = '<!doctype html><html><head>';
+  const append = (text: string) => { if (html.length + text.length > limit) return false; html += text; return true; };
+  for (const node of document.head.querySelectorAll('title,base,meta,link')) {
+    const tag = node.tagName.toLowerCase();
+    const name = node.getAttribute('name') ?? '';
+    if (tag === 'base' && !node.hasAttribute('href')) continue;
+    if (tag === 'meta' && name.toLowerCase() !== 'description' && !robots.has(name.trim().toLowerCase())) continue;
+    if (tag === 'link' && !(node.getAttribute('rel') ?? '').toLowerCase().split(/\s+/).includes('canonical')) continue;
+    const attributes = tag === 'base' ? ['href'] : tag === 'meta' ? ['name','content'] : tag === 'link' ? ['rel','href'] : [];
+    const text = '<'+tag+attributes.map(key=>node.hasAttribute(key) ? ' '+key+'="'+escape(node.getAttribute(key)!)+'"' : '').join('')+'>'+
+      (tag === 'title' ? node.innerHTML+'</title>' : '');
+    if (!append(text)) return {reason:'Rendered SEO metadata exceeds the snapshot size limit'};
+  }
+  if (!append('</head><body>')) return {reason:'Rendered SEO metadata exceeds the snapshot size limit'};
+  // JSON-LD can occur in the body; hydration data and executable scripts are irrelevant here.
+  for (const script of document.querySelectorAll('script')) {
+    if ((script.getAttribute('type') ?? '').trim().toLowerCase() !== 'application/ld+json') continue;
+    if (!append('<script type="application/ld+json">'+(script.textContent ?? '')+'</script>')) {
+      return {reason:'Rendered SEO JSON-LD exceeds the snapshot size limit'};
+    }
+  }
+  if (!append('</body></html>')) return {reason:'Rendered SEO metadata exceeds the snapshot size limit'};
+  return {html};
+}
+
 async function browserRenderer(request: ValidatedRequest, options: CollectorOptions): Promise<Renderer> {
   const browser = await openBrowserSession(request.targetUrl,{profile:request.profile,...options});
   let first = true;
@@ -165,12 +196,9 @@ async function browserRenderer(request: ValidatedRequest, options: CollectorOpti
           finalConfirmed = true;
           const contentType = response.headers()['content-type'];
           if (success(response.status()) && (!contentType || isHtml(contentType,''))) {
-            const snapshot = await abortable(page.evaluate((limit) => {
-              const serialized = document.documentElement?.outerHTML;
-              return serialized && serialized.length <= limit ? serialized : null;
-            },RENDER_CHARS),AbortSignal.any([browser.signal,AbortSignal.timeout(4000)]));
-            if (snapshot === null) throw new Error('Rendered HTML missing or exceeds the snapshot size limit');
-            html = snapshot;
+            const snapshot = await abortable(page.evaluate(captureSeoDocument,RENDER_CHARS),AbortSignal.any([browser.signal,AbortSignal.timeout(4000)]));
+            if (!snapshot.html) throw new Error(snapshot.reason ?? 'Rendered SEO snapshot is missing');
+            html = snapshot.html;
             if (normalizedHttpUrl(page.url()) !== normalizedHttpUrl(location.href)) {
               html = undefined;
               throw new Error('Page URL changed during the HTML snapshot');

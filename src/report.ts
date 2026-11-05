@@ -173,6 +173,36 @@ function renderAccessibilityFindings(report: AgentReport, evidence: Map<string, 
     }).join('')}</div>`).join('');
 }
 
+export function emptyFindingsSummary(report: AgentReport) {
+  const titles = { 'seo-ai-search': 'Technical SEO & Discoverability', accessibility: 'Accessibility Regression', performance: 'Performance Regression' };
+  const limited = report.coverage.filter(item => item.status === 'incomplete' || item.status === 'unavailable');
+  const headline = report.collectionStatus === 'failed'
+    ? 'Could not complete the scan — no reliable conclusion is available.'
+    : report.collectionStatus === 'partial' || limited.length
+      ? 'Scan incomplete — no confirmed issues in the available results.'
+      : 'No issues detected by the completed checks.';
+  const scope = `This report covers only ${titles[report.agentId]} checks on the requested pages and states. Zero reported issues does not mean the site is clean or that other maintenance areas were checked.`;
+  const limitations = limited.map(item => {
+    let explanation = item.reason || 'The scanner did not finish this check.';
+    if (report.agentId === 'seo-ai-search' && /rendered/i.test(item.subject) && /rendered HTML missing|snapshot size limit/i.test(item.reason || '')) {
+      explanation = 'The scanner could not capture the rendered page; rendered SEO checks were not completed.';
+    } else if (report.agentId === 'seo-ai-search' && /sitemap/i.test(item.subject) && /limit|bounded|not fetched/i.test(item.reason || '')) {
+      explanation = 'Sitemap inspection reached its limits; page membership remains unconfirmed.';
+    }
+    return { ...item, explanation };
+  });
+  return { headline, scope, limitations };
+}
+
+function renderEmptyFindings(report: AgentReport) {
+  const summary = emptyFindingsSummary(report);
+  return `<div class="empty-findings"><h3>${esc(summary.headline)}</h3>${paragraph(summary.scope)}
+    ${summary.limitations.map(item => `<article><h4>${esc(item.subject)}</h4>
+      <p class="meta">${esc(item.status)} · ${esc(scopeLine(item.scope))}</p>${paragraph(item.explanation)}
+      ${item.reason && item.reason !== item.explanation ? `<details><summary>Recorded limitation</summary>${paragraph(item.reason)}</details>` : ''}
+    </article>`).join('')}</div>`;
+}
+
 function renderComparison(report: AgentReport) {
   const comparison = report.comparison;
   const headline = {
@@ -274,8 +304,7 @@ ${section('Run overview', `<details><summary>Run details and coverage</summary><
   ${label('Retention', report.retention.status)}${label('Retention details', report.retention.reason)}
   ${label('Baseline export', report.baseline ? 'Available in the run’s JSON exports.' : report.baselineUnavailableReason)}
   </dl></details>${paragraph(limits[report.agentId])}`)}
-${section('Findings and observations', (report.agentId === 'accessibility' ? renderAccessibilityFindings(report, evidence, coverage) : report.findings.map((item) => renderFinding(item, evidence, coverage)).join(''))
-  || paragraph('No findings or observations were recorded. Check the coverage before drawing conclusions.'))}
+${section('Findings and observations', !report.findings.length ? renderEmptyFindings(report) : report.agentId === 'accessibility' ? renderAccessibilityFindings(report, evidence, coverage) : report.findings.map((item) => renderFinding(item, evidence, coverage)).join(''))}
 ${renderComparison(report)}
 ${renderAssessment(report, evidence)}
 ${renderMeasurements(report.measurements)}

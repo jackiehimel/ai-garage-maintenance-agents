@@ -1,7 +1,10 @@
 import assert from 'node:assert/strict';
 import { Readable } from 'node:stream';
 import test from 'node:test';
-import { collectSeoEvidence, seoGuardFailuresAccounted } from '../src/agents/seo.js';
+import { runInNewContext } from 'node:vm';
+import { parse } from 'node-html-parser';
+import { readDocument } from '../src/agents/seo-parsing.js';
+import { captureSeoDocument, collectSeoEvidence, seoGuardFailuresAccounted } from '../src/agents/seo.js';
 import { baselineIdentity, compareFindings, createBaseline } from '../src/core/baseline.js';
 import { validateRequest } from '../src/core/input.js';
 import { createPublicHttpClient } from '../src/core/network.js';
@@ -12,7 +15,7 @@ const noindex = '<meta name="robots" content="noindex, follow">';
 const template = (head = '') => '<!doctype html><html><head>' + head + '</head><body>Test</body></html>';
 const runtime = { browser: '120.0.0.0', driver: '1.63.0' };
 
-async function fixture(options: { intent?: 'indexable'|'excluded'; source?: string; render?: string|null; search?: boolean; sitemaps?: boolean; redirect?: boolean; robots?: string; sitemap?: string; headers?: Record<string,string>; provisionalBrowser?: boolean; renderFailure?: boolean; sitemapIndex?: string; diagnostics?: string[]; requestFailures?: import('../src/core/browser.js').BrowserFailureDiagnostics } = {}) {
+async function fixture(options: { intent?: 'indexable'|'excluded'; source?: string; render?: string|null; search?: boolean; sitemaps?: boolean; redirect?: boolean; robots?: string; sitemap?: string; headers?: Record<string,string>; provisionalBrowser?: boolean; renderFailure?: boolean; sitemapIndex?: string; snapshot?: ReturnType<typeof captureSeoDocument>; diagnostics?: string[]; requestFailures?: import('../src/core/browser.js').BrowserFailureDiagnostics } = {}) {
   const request = validateRequest({
     agentId: 'seo-ai-search', targetUrl: url, pages: [extra],
     indexIntent: options.intent ? [{page:url,intended:options.intent}] : [],
@@ -46,7 +49,7 @@ async function fixture(options: { intent?: 'indexable'|'excluded'; source?: stri
         if (options.render === null) throw new Error('Rendered fixture unavailable');
         if (page === url && options.provisionalBrowser) return {url:'https://example.com/intermediate',status:302,redirects:[],headers:{location:'https://blocked.example/'},diagnostics:[],reason:'Navigation blocked',networkReason:'No final document',finalConfirmed:false};
         const html = page === url ? template(options.render ?? options.source) : template();
-        return {url:page,status:200,redirects:[],headers:{},html,diagnostics:options.diagnostics ?? [],requestFailures:options.requestFailures};
+        return {url:page,status:200,redirects:[],headers:{},html:options.snapshot ? options.snapshot.html : html,reason:options.snapshot?.reason,diagnostics:options.diagnostics ?? [],requestFailures:options.requestFailures};
       },
       close: async () => {},
     }));
@@ -322,4 +325,48 @@ test('observed xhr guard and fetch failure account for the same reporting reques
   const observed = {...guard,resourceType:'fetch',reason:'failed: net::ERR_BLOCKED_BY_CLIENT.Inspector'};
   assert.equal(seoGuardFailuresAccounted([guard],[observed]),true);
   assert.equal(seoGuardFailuresAccounted([guard,guard],[observed]),false);
+});
+
+
+const projectedSnapshot = (source:string) => {
+  const root = parse(source);
+  const document = {documentElement:root.querySelector('html'),head:root.querySelector('head'),querySelectorAll:root.querySelectorAll.bind(root)};
+  return runInNewContext('('+captureSeoDocument.toString()+')(1000000)',{document}) as ReturnType<typeof captureSeoDocument>;
+};
+
+test('bounded rendered SEO projection ignores large bodies and hydration while preserving metadata and body JSON-LD', async () => {
+  const snapshot = projectedSnapshot('<html><head><title>Large page</title><base href="/catalog/"><meta name="robots" content="index"><meta name="description" content="A &amp; B"><link rel="canonical" href="item"><link rel="canonical" href="item">'+
+    '<script type="application/json">'+ 'x'.repeat(1100000)+'</script></head><body><div>'+ 'x'.repeat(1100000)+'</div>'+
+    '<script type="application/ld+json">{"@type":"Product"}</script><script type="application/ld+json">{"@type":"WebPage"}</script></body></html>');
+  assert.ok(snapshot.html && snapshot.html.length<1000);
+  const document = readDocument(snapshot.html,url);
+  assert.equal(document.title,'Large page');
+  assert.equal(document.description,'A & B');
+  assert.equal(document.canonical.length,2);
+  assert.equal(document.canonical[0].url,'https://example.com/catalog/item');
+  assert.equal(document.directives[0].value,'index');
+  assert.equal(document.structuredCount,2);
+  assert.deepEqual(document.jsonLd.map(block=>block.types),[['Product'],['WebPage']]);
+  const {result} = await fixture({snapshot});
+  assert.equal(result.coverage.find(c=>c.subject === 'rendered HTML canonical and indexing directives')?.status,'complete');
+  assert.equal(result.coverage.find(c=>c.subject === 'rendered JSON-LD parse and type observations')?.status,'complete');
+});
+
+test('missing or oversized relevant rendered SEO data stays incomplete and parser limits remain intact', async () => {
+  for (const source of ['', '<html><body></body></html>',
+    '<html><head><meta name="robots" content="'+ 'x'.repeat(1000000)+'"></head><body></body></html>',
+    '<html><head></head><body><script type="application/ld+json">'+ 'x'.repeat(1000000)+'</script></body></html>']) {
+    const snapshot = projectedSnapshot(source);
+    assert.equal(snapshot.html,undefined);
+    assert.match(snapshot.reason!,/missing|size limit/);
+    const {result} = await fixture({snapshot});
+    assert.equal(result.coverage.find(c=>c.subject === 'rendered HTML canonical and indexing directives')?.status,'incomplete');
+  }
+  const oversizedBlock = projectedSnapshot('<html><head></head><body><script type="application/ld+json">'+ 'x'.repeat(120001)+'</script></body></html>');
+  assert.ok(oversizedBlock.html);
+  assert.equal(readDocument(oversizedBlock.html,url).structuredIncomplete,true);
+  const duplicateBlocks = projectedSnapshot('<html><head></head><body>'+ '<script type="application/ld+json">{"@type":"Product"}</script>'.repeat(17)+'</body></html>');
+  const parsed = readDocument(duplicateBlocks.html!,url);
+  assert.equal(parsed.structuredCount,17);
+  assert.equal(parsed.structuredIncomplete,true);
 });

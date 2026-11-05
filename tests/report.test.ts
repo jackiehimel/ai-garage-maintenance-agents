@@ -173,3 +173,40 @@ test('live and offline accessibility grouping and actionable guidance have ident
   }
   assert.equal(live.groupLocation(fixture.findings), exporter.groupLocation(fixture.findings));
 });
+
+test('zero findings in a partial SEO scan immediately explains incomplete checks without a clean-site claim', () => {
+  const partial: AgentReport = { ...report, agentId: 'seo-ai-search', findings: [], collectionStatus: 'partial', coverage: [
+    { id: 'render', scope, subject: 'rendered HTML canonical and indexing directives', status: 'incomplete', reason: 'Rendered HTML missing or exceeds the snapshot size limit <img src=x>' },
+    { id: 'sitemap', scope, subject: 'sampled sitemap membership', status: 'incomplete', reason: 'Sitemap index child sample limit reached; Sitemap request or index depth limit reached' },
+    { id: 'optional', scope, subject: 'owner-supplied Search Console evidence', status: 'not-configured', reason: 'No evidence supplied' },
+  ] };
+  const document = parse(exporter.renderReport(partial));
+  const empty = document.querySelector('.empty-findings')!;
+  assert.ok(empty);
+  assert.match(empty.text, /Scan incomplete — no confirmed issues in the available results/);
+  assert.match(empty.text, /could not capture the rendered page; rendered SEO checks were not completed/);
+  assert.match(empty.text, /Sitemap inspection reached its limits; page membership remains unconfirmed/);
+  assert.match(empty.text, /Technical SEO & Discoverability/);
+  assert.match(empty.text, /does not mean the site is clean/);
+  assert.match(empty.text, /rendered HTML canonical/);
+  assert.ok(empty.text.includes('<img src=x>'));
+  assert.doesNotMatch(empty.text, /No evidence supplied/);
+  assert.equal(document.querySelectorAll('img').length, 0);
+});
+
+test('zero findings distinguish failed and complete scans and keep live/export wording equivalent', () => {
+  const app = readFileSync(new URL('../../public/app.js', import.meta.url), 'utf8');
+  const start = app.indexOf('function emptyFindingsSummary(');
+  const end = app.indexOf('function renderFindings(', start);
+  assert.ok(start >= 0);
+  const live = runInNewContext(`${app.slice(start, end)}; emptyFindingsSummary`);
+  for (const status of ['failed', 'partial', 'complete'] as const) {
+    const value: AgentReport = { ...report, findings: [], coverage: [], collectionStatus: status };
+    const document = parse(exporter.renderReport(value));
+    const empty = document.querySelector('.empty-findings')!;
+    assert.ok(empty);
+    assert.ok(empty.text.includes(live(value).headline));
+    assert.match(empty.text, status === 'failed' ? /Could not complete the scan.*no reliable conclusion/ : status === 'partial' ? /Scan incomplete/ : /No issues detected by the completed checks/);
+    assert.match(empty.text, /does not mean the site is clean/);
+  }
+});

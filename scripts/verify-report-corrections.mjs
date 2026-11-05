@@ -31,6 +31,17 @@ for(const agentId of ['seo-ai-search','accessibility']) {
   }
 }
 
+// Large retail pages must retain rendered SEO evidence even when their full DOM
+// exceeds the capture budget. Sitemap sampling remains honestly bounded.
+const retailReport=await runAgent({agentId:'seo-ai-search',targetUrl:'https://www.homedepot.com/'},{assessment:'off',storageRoot:destination,executablePath:process.env.CHROME_PATH,signal:AbortSignal.timeout(180_000)});
+await writeFile(`${destination}/home-depot.html`,renderReport(retailReport));
+console.log('HOME_DEPOT_RESULT '+JSON.stringify({runId:retailReport.runId,collectionStatus:retailReport.collectionStatus,coverage:retailReport.coverage,findings:retailReport.findings,evidence:retailReport.evidence,diagnostics:retailReport.diagnostics}));
+for(const subject of ['rendered HTML canonical and indexing directives','rendered JSON-LD parse and type observations']) {
+  const check=retailReport.coverage.find(c=>c.subject===subject);
+  assert(check,'Missing retail rendered check: '+subject);
+  assert.equal(check.status,'complete','Retail rendered capture is incomplete: '+JSON.stringify(check));
+}
+
 // Exercise the actual saved-report UI with fresh measured data, with no new scan
 // or AI provider call and no page response interception.
 const server=spawn(process.execPath,['dist/app/server.js'],{env:{...process.env,PORT:'4175',RUN_STORAGE_ROOT:resolve(destination),ANTHROPIC_API_KEY:''},stdio:['ignore','pipe','pipe']});

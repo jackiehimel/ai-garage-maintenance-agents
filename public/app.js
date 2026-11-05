@@ -374,10 +374,45 @@ function groupLocation(instances) {
   return `${instances.length} affected item${instances.length === 1 ? '' : 's'} on ${pages.size} tested page${pages.size === 1 ? '' : 's'}${states.length ? ` · States: ${states.join(', ')}` : ''}. Expand the locations below for selectors and evidence.`;
 }
 
+function emptyFindingsSummary(report) {
+  const titles = { 'seo-ai-search': 'Technical SEO & Discoverability', accessibility: 'Accessibility Regression', performance: 'Performance Regression' };
+  const limited = report.coverage.filter(item => item.status === 'incomplete' || item.status === 'unavailable');
+  const headline = report.collectionStatus === 'failed'
+    ? 'Could not complete the scan — no reliable conclusion is available.'
+    : report.collectionStatus === 'partial' || limited.length
+      ? 'Scan incomplete — no confirmed issues in the available results.'
+      : 'No issues detected by the completed checks.';
+  const scope = `This report covers only ${titles[report.agentId]} checks on the requested pages and states. Zero reported issues does not mean the site is clean or that other maintenance areas were checked.`;
+  const limitations = limited.map(item => {
+    let explanation = item.reason || 'The scanner did not finish this check.';
+    if (report.agentId === 'seo-ai-search' && /rendered/i.test(item.subject) && /rendered HTML missing|snapshot size limit/i.test(item.reason || '')) {
+      explanation = 'The scanner could not capture the rendered page; rendered SEO checks were not completed.';
+    } else if (report.agentId === 'seo-ai-search' && /sitemap/i.test(item.subject) && /limit|bounded|not fetched/i.test(item.reason || '')) {
+      explanation = 'Sitemap inspection reached its limits; page membership remains unconfirmed.';
+    }
+    return { ...item, explanation };
+  });
+  return { headline, scope, limitations };
+}
+
 function renderFindings(root, report, anchors) {
   const findings = section(root, 'findings', 'Findings and observations');
   if (!report.findings.length) {
-    paragraph(findings, 'No findings or observations were recorded. Check the coverage before drawing conclusions.');
+    const summary = emptyFindingsSummary(report);
+    const empty = element('div', 'empty-findings');
+    empty.append(element('h3', '', summary.headline));
+    paragraph(empty, summary.scope);
+    for (const item of summary.limitations) {
+      const check = entry(empty, item.subject);
+      paragraph(check, `${statusText(item.status)} · ${scopeText(item.scope)}`, 'meta');
+      paragraph(check, item.explanation);
+      if (item.reason && item.reason !== item.explanation) {
+        const original = element('details', 'report-data');
+        original.append(element('summary', '', 'Recorded limitation'), element('p', '', item.reason));
+        check.append(original);
+      }
+    }
+    findings.append(empty);
     return;
   }
   if (report.agentId === 'accessibility') {
