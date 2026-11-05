@@ -11,3 +11,8 @@ coverage/
 .DS_Store
 playwright-report/
 test-results/
+
+.runs/
+.superpowers/
+.remote-runs/
+collector-result.json

@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Run Solvd website maintenance checks against a public HTTPS page and review the measured evidence.">
+  <meta name="theme-color" content="#143d2a">
+  <title>Website Maintenance · Solvd</title>
+  <link rel="stylesheet" href="/styles.css">
+  <script type="module" src="/app.js"></script>
+</head>
+<body>
+  <a class="skip" href="#main">Skip to main content</a>
+  <header class="site-header">
+    <div class="site-header-inner">
+      <div class="brand" aria-label="Solvd">solvd<span>.</span></div>
+      <div class="site-context"><span></span>Website Maintenance</div>
+    </div>
+  </header>
+  <main id="main" class="wrap" tabindex="-1">
+    <div class="hero">
+      <p class="hero-kicker"><span></span> SOLVD MAINTENANCE TOOLS</p>
+      <h1>Website maintenance agents</h1>
+      <p>Run a focused check on a public page, review the evidence, and compare it with a previous run.</p>
+    </div>
+
+    <form id="run-form" class="workspace">
+      <fieldset id="run-controls">
+        <legend class="visually-hidden">Run settings</legend>
+        <fieldset class="agent-picker" aria-describedby="agent-description">
+          <legend><span class="step-number" aria-hidden="true">01</span> Choose an agent</legend>
+          <p id="agent-description" class="section-intro">Each agent runs independently and produces its own report.</p>
+          <div class="agent-grid">
+            <label class="agent-option">
+              <input type="radio" name="agent" value="seo-ai-search" checked aria-labelledby="seo-name" aria-describedby="seo-description">
+              <span class="agent-card">
+                <span class="card-top">
+                  <span class="agent-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="10.8" cy="10.8" r="5.8"></circle><path d="m15 15 4 4m-11.5-8.2h6.6m-3.3-3.3v6.6"></path></svg></span>
+                  <span class="radio-indicator" aria-hidden="true"></span>
+                </span>
+                <span class="agent-name" id="seo-name">Technical SEO &amp; Discoverability</span>
+                <span class="agent-description" id="seo-description">Inspect crawl signals, indexing directives, canonicals, sitemaps, and structured data.</span>
+              </span>
+            </label>
+            <label class="agent-option">
+              <input type="radio" name="agent" value="accessibility" aria-labelledby="accessibility-name" aria-describedby="accessibility-description">
+              <span class="agent-card">
+                <span class="card-top">
+                  <span class="agent-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="5" r="1.7"></circle><path d="M5 9.5c2.2.8 4.5 1.1 7 1.1s4.8-.3 7-1.1m-7 1.1V15m0 0-3.3 5m3.3-5 3.3 5"></path></svg></span>
+                  <span class="radio-indicator" aria-hidden="true"></span>
+                </span>
+                <span class="agent-name" id="accessibility-name">Accessibility Regression</span>
+                <span class="agent-description" id="accessibility-description">Run automated accessibility checks and, when configured, exercise keyboard and focus states.</span>
+              </span>
+            </label>
+            <label class="agent-option">
+              <input type="radio" name="agent" value="performance" aria-labelledby="performance-name" aria-describedby="performance-description">
+              <span class="agent-card">
+                <span class="card-top">
+                  <span class="agent-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4.2 17a8 8 0 1 1 15.6 0M7 17h10m-5-3 3-4m-8 3H6m6-5V7m5 6h1"></path><circle cx="12" cy="14" r="1"></circle></svg></span>
+                  <span class="radio-indicator" aria-hidden="true"></span>
+                </span>
+                <span class="agent-name" id="performance-name">Performance Regression</span>
+                <span class="agent-description" id="performance-description">Collect repeated Lighthouse navigation samples under a consistent desktop profile.</span>
+              </span>
+            </label>
+          </div>
+        </fieldset>
+
+        <div class="target-panel">
+          <label class="section-label" for="target-url"><span class="step-number" aria-hidden="true">02</span> Enter the page to check</label>
+          <div class="target-row">
+            <div class="url-control">
+              <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="m10 13 4-4m-6.2 5.8-1.1 1.1a3 3 0 0 0 4.2 4.2l2.9-2.9a3 3 0 0 0 0-4.2m2.4-3.8 1.1-1.1a3 3 0 0 0-4.2-4.2l-2.9 2.9a3 3 0 0 0 0 4.2"></path></svg>
+              <input id="target-url" name="target-url" type="url" inputmode="url" autocomplete="url" autocapitalize="none" spellcheck="false" maxlength="2048" value="https://solvd.com" aria-describedby="url-help" required>
+            </div>
+            <button id="run-button" class="button primary" type="submit">
+              <span id="run-button-label">Run check</span>
+              <svg aria-hidden="true" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 10h12m-5-5 5 5-5 5"></path></svg>
+            </button>
+          </div>
+          <p id="url-help" class="field-help">Use a public HTTPS URL without credentials or a custom port.</p>
+
+          <details id="advanced" class="advanced">
+            <summary>Configuration and baseline <span class="optional">Optional</span></summary>
+            <div class="advanced-body">
+              <div>
+                <label class="field-label" for="configuration">Additional configuration (JSON)</label>
+                <p id="configuration-help" class="field-help">Add same-origin pages, indexing intent, accessibility states, or a performance sample count. Leave blank for a check of the entered page with default settings.</p>
+                <textarea id="configuration" rows="5" spellcheck="false" maxlength="3000000" placeholder='{ "pages": ["/about"] }' aria-describedby="configuration-help"></textarea>
+              </div>
+              <div>
+                <label class="field-label" for="baseline-file">Previous run baseline (JSON)</label>
+                <p id="baseline-help" class="field-help">Import a baseline or a report containing one. Runs are compared only when the baseline is compatible.</p>
+                <input id="baseline-file" type="file" accept=".json,application/json" aria-describedby="baseline-help">
+                <div class="baseline-selection">
+                  <p id="baseline-selection" class="field-help" role="status"></p>
+                  <button type="button" class="text-button" id="clear-baseline" hidden>Clear baseline</button>
+                </div>
+              </div>
+            </div>
+          </details>
+        </div>
+      </fieldset>
+
+      <div class="status-box">
+        <p id="runtime-state" class="field-help"></p>
+        <p id="run-status" role="status" aria-live="polite" aria-atomic="true"></p>
+        <p id="run-error" class="error-message" role="alert" hidden></p>
+      </div>
+    </form>
+
+    <section id="report" class="report" aria-labelledby="report-title" hidden></section>
+    <noscript><p class="error-message">Enable JavaScript to run checks and view their results.</p></noscript>
+  </main>
+  <footer class="site-footer"><div>Solvd <span>·</span> Website Maintenance</div></footer>
+</body>
+</html>

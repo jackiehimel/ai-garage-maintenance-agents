@@ -89,6 +89,7 @@ export interface CollectorResult {
   coverage: CoverageEntry[]; evidence: Evidence[]; findings: Finding[]; artifacts: RawArtifact[];
   measurements?: JsonObject; diagnostics?: string[];
 }
+export interface CollectorOptions { executablePath?: string; signal?: AbortSignal }
 export interface BaselineIdentity {
   agentId: AgentId; targetUrl: string; testedUrl: string;
   configuration: JsonObject; runtime: RuntimeVersions; profile: DeclaredProfile;
