@@ -4,14 +4,25 @@ import {collectKeyboardProbe} from '../dist/app/agents/accessibility-probe.js';
 import {publicAccessibilityGuardScript} from '../dist/app/agents/accessibility.js';
 
 const browser=await chromium.launch({executablePath:process.env.CHROME_PATH,headless:true,chromiumSandbox:true});
+const fixtureUrl='https://fixture.example.test/';
 try {
   async function fixture(name,html,check) {
     const context=await browser.newContext({serviceWorkers:'block'});
     const page=await context.newPage();
     let blocked=0;
-    await context.route('**/*',async route=>{blocked++;await route.abort('blockedbyclient');});
+    let initialDocument=true;
+    await context.route('**/*',async route=>{
+      if(initialDocument && route.request().isNavigationRequest() && route.request().url()===fixtureUrl) {
+        initialDocument=false;
+        return route.fulfill({status:200,contentType:'text/html',body:html});
+      }
+      blocked++;await route.abort('blockedbyclient');
+    });
     try {
-      await page.setContent(html,{waitUntil:'load'});
+      // A synthetic HTTPS origin exercises the Navigation API used by real
+      // scanned pages; opaque about:blank documents disable that API behavior.
+      // Every request is intercepted here; no fixture request reaches a server.
+      await page.goto(fixtureUrl,{waitUntil:'load'});
       await page.evaluate(publicAccessibilityGuardScript('fixtureGuard'));
       await page.evaluate(()=>window.fixtureGuard.seal());
       const result=await collectKeyboardProbe(page,{
@@ -42,9 +53,9 @@ try {
   });
   await fixture('focus-triggered-navigation','<button onfocus="location.href=\'https://fixture.invalid/not-allowed\'">Navigation attempt</button>',async(result,page,getBlocked)=>{
     const guard=await page.evaluate(()=>window.fixtureGuard.read());
-    assert.equal(result.status,'incomplete');assert(getBlocked()>0||guard.blocked>0);assert.equal(page.url(),'about:blank');
+    assert.equal(result.status,'incomplete');assert(getBlocked()>0||guard.blocked>0);assert.equal(page.url(),fixtureUrl);
   });
   await fixture('focus-triggered-form','<form id="form" action="https://fixture.invalid/not-allowed"><button type="button" onfocus="document.getElementById(\'form\').requestSubmit()">Submit attempt</button></form>',async(result,page,getBlocked)=>{
-    assert.equal(result.status,'incomplete');assert.equal(getBlocked(),0,'Form guard must prevent network submission');assert.equal(page.url(),'about:blank');
+    assert.equal(result.status,'incomplete');assert.equal(getBlocked(),0,'Form guard must prevent network submission');assert.equal(page.url(),fixtureUrl);
   });
 } finally {await browser.close();}
