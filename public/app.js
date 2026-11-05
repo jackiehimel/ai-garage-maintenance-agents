@@ -48,6 +48,7 @@ const allowedConfiguration = new Set(['pages', 'states', 'components', 'ownerPri
 const maxRequestBytes = 3_000_000;
 const maxBaselineBytes = 2_500_000;
 const maxImportBytes = 16_000_000;
+const validRunId = (value) => typeof value === 'string' && /^run_[a-f0-9]{24}$/.test(value);
 let baselineFromRun = null;
 let activeRun = null;
 let runtimeMode;
@@ -62,7 +63,23 @@ const scopeText = (scope) => scope ? [
   scope.element && `Element: ${scope.element}`,
 ].filter(Boolean).join(' · ') : '';
 const safeSegment = (part) => encodeURIComponent(String(part));
-const unitValue = (value, unit) => typeof value !== 'number' ? '—' : `${value}${unit && unit !== 'unitless' ? ` ${unit}` : ''}`;
+const readableNumber = (value, unit) => value !== 0 && unit === 'unitless' && Math.abs(value) < 0.0001 ? (value < 0 ? '>−0.0001' : '<0.0001') : String(Number(value.toFixed(unit === 'unitless' ? 4 : unit === 'points' ? 0 : 1)));
+const unitValue = (value, unit) => typeof value !== 'number' ? '—' : `${readableNumber(value, unit)}${unit && unit !== 'unitless' ? ` ${unit}` : ''}`;
+
+function headlineMetrics(report) {
+  const measured=report.findings.filter(f=>f.disposition==='finding').length;
+  const reviews=report.findings.filter(f=>f.disposition==='review-needed').length;
+  const complete=report.coverage.filter(c=>c.status==='complete').length;
+  const limited=report.coverage.filter(c=>c.status==='incomplete'||c.status==='unavailable').length;
+  if(report.agentId==='performance') {
+    const page=report.measurements?.navigation?.pages?.[0];
+    if(page) {
+      const score=page.metrics?.['performance-score'], lcp=page.metrics?.['largest-contentful-paint'];
+      return [['Median score',typeof score?.median==='number'?`${Math.round(score.median)} / 100`:'Unavailable'],['Largest paint',typeof lcp?.median==='number'?`${(lcp.median/1000).toFixed(2)} s`:'Unavailable'],['Samples collected',`${page.succeeded} / ${page.planned}`]];
+    }
+  }
+  return report.agentId==='accessibility' ? [['Automated findings',measured],['Manual review items',reviews],['Completed checks',complete]] : [['Completed checks',complete],['Limited checks',limited],['Findings to review',report.findings.length]];
+}
 
 function element(tag, className, content) {
   const node = document.createElement(tag);
@@ -225,12 +242,22 @@ function renderOverview(root, report, agent, runPath) {
     badge(`Comparison: ${statusText(report.comparison.status)}`, report.comparison.status === 'incompatible' ? 'warn' : ''),
   );
   overview.append(element('p', 'eyebrow', 'Run report'), title, indicators);
-  detailList(overview, [
+  paragraph(overview, report.testedUrl, 'report-target');
+  const highlights=element('div','metric-highlights');
+  for(const [label,value] of headlineMetrics(report)) {
+    const card=element('div','metric-highlight');card.append(element('strong','',value),element('span','',label));highlights.append(card);
+  }
+  overview.append(highlights);
+  if(report.agentId==='performance')paragraph(overview,'Medians describe the first tested page. Review the sample spread before treating a difference as a change.','meta');
+  paragraph(overview,`Checked ${new Date(report.completedAt).toLocaleString(undefined,{dateStyle:'medium',timeStyle:'short'})}`,'meta');
+  const runDetails=element('details','run-details');runDetails.append(element('summary','','Run details'));
+  detailList(runDetails, [
     ['Submitted URL', report.submittedUrl], ['Tested URL', report.testedUrl], ['Run ID', report.runId],
     ['Started', report.startedAt], ['Finished', report.completedAt],
     ['Coverage', `${completed} of ${report.coverage.length} recorded entries marked complete`],
     ['Retention', statusText(report.retention.status)], ['Retention details', report.retention.reason],
   ]);
+  overview.append(runDetails);
   paragraph(overview, agent.limit, 'meta');
   if (report.collectionStatus !== 'complete') {
     paragraph(overview, 'Collection did not finish across the requested scope. Review coverage and diagnostics before interpreting the results.', 'meta');
@@ -402,7 +429,7 @@ function renderRunDetails(root, report, anchors, runPath) {
     ]);
     const message = element('p', 'meta');
     message.setAttribute('role', 'status');
-    endpointDownload(card, 'Download raw artifact', `${runPath}/artifacts/${safeSegment(item.id)}`, item.id, message);
+    endpointDownload(card, 'Download raw artifact', `${runPath}/artifacts/${safeSegment(item.id)}`, item.id+(item.mediaType==='application/json'?'.json':item.mediaType==='application/gzip'?'.json.gz':''), message);
     card.append(message);
   }
   const configuration = section(root, 'run-configuration', 'Run configuration and runtime');
@@ -487,9 +514,9 @@ async function parseBaselineFile(file) {
   return baseline;
 }
 
-function setBusy(busy) {
+function setBusy(busy, label = 'Running…') {
   controls.disabled = busy;
-  runLabel.textContent = busy ? 'Running…' : 'Run check';
+  runLabel.textContent = busy ? label : 'Run check';
   runStatus.dataset.running = String(busy);
 }
 
@@ -546,14 +573,13 @@ form.addEventListener('submit', async (event) => {
       const description = typeof result?.error === 'string' ? result.error : typeof result?.message === 'string' ? result.message : '';
       throw new Error(description || `The server could not run the check (HTTP ${response.status}).`);
     }
-    if (result?.schemaVersion !== 1 || result.agentId !== agentId || typeof result.runId !== 'string' ||
-      !Array.isArray(result.findings) || !Array.isArray(result.evidence) || !Array.isArray(result.coverage) ||
-      !Array.isArray(result.artifacts) || !result.comparison || !result.assessment || !result.retention) {
-      throw new Error('The server did not return a valid report.');
-    }
+    if (!isReport(result) || result.agentId !== agentId) throw new Error('The server did not return a valid report.');
     setBusy(false);
     renderReport(result);
-    runStatus.textContent = `Report returned. Collection: ${statusText(result.collectionStatus)}. AI assessment: ${statusText(result.assessment.status)}.`;
+    const address = new URL(window.location.href);
+    address.searchParams.set('run', result.runId);
+    window.history.replaceState(null, '', address);
+    runStatus.textContent = reportStatus('Report returned', result);
   } catch (error) {
     if (activeRun !== current) return;
     runStatus.textContent = '';
@@ -582,6 +608,72 @@ window.addEventListener('pagehide', () => {
   }
 });
 
+function isReport(value) {
+  return value?.schemaVersion === 1 && validRunId(value.runId) && Object.hasOwn(agents, value.agentId) &&
+    typeof value.submittedUrl === 'string' && Array.isArray(value.findings) && Array.isArray(value.evidence) &&
+    Array.isArray(value.coverage) && Array.isArray(value.artifacts) && value.comparison && value.assessment &&
+    value.retention && value.runtime && value.configuration;
+}
+
+function reportStatus(prefix, result) {
+  return `${prefix}. Collection: ${statusText(result.collectionStatus)}. AI assessment: ${statusText(result.assessment.status)}.`;
+}
+
+function restoreRunInputs(result) {
+  const agent = [...form.querySelectorAll('input[name="agent"]')].find((option) => option.value === result.agentId);
+  if (agent) agent.checked = true;
+  urlField.value = result.submittedUrl;
+  const configuration = result.configuration;
+  const extras = {};
+  for (const key of ['states', 'components', 'ownerPriorities', 'indexIntent']) {
+    if (Array.isArray(configuration[key]) && configuration[key].length) extras[key] = configuration[key];
+  }
+  const pages = configuration.pages?.filter((page) => page.url !== configuration.targetUrl || page.label);
+  if (pages?.length) extras.pages = pages;
+  if (configuration.release) extras.release = configuration.release;
+  if (configuration.supplied) extras.supplied = configuration.supplied;
+  if (result.agentId === 'performance' && [4, 5].includes(configuration.profile?.samples)) {
+    extras.profile = { samples: configuration.profile.samples };
+  }
+  configField.value = Object.keys(extras).length ? JSON.stringify(extras, null, 2) : '';
+}
+
+async function loadSavedReport() {
+  const runId = new URLSearchParams(window.location.search).get('run');
+  if (runId === null) return;
+  if (!validRunId(runId)) {
+    showError('The report link has an invalid run ID.');
+    return;
+  }
+  const current = { controller: new AbortController() };
+  activeRun = current;
+  setBusy(true, 'Loading report…');
+  runStatus.textContent = 'Loading the saved report…';
+  try {
+    const response = await fetch(`/api/runs/${runId}/report.json`, {
+      credentials: 'same-origin', cache: 'no-store', signal: current.controller.signal,
+    });
+    const result = await response.json().catch(() => null);
+    if (activeRun !== current) return;
+    if (!response.ok || !isReport(result) || result.runId !== runId) {
+      throw new Error('This report is unavailable on the current server. You can start a new check.');
+    }
+    restoreRunInputs(result);
+    setBusy(false);
+    renderReport(result);
+    runStatus.textContent = reportStatus('Saved report loaded', result);
+  } catch (error) {
+    if (activeRun !== current) return;
+    runStatus.textContent = '';
+    showError(error instanceof Error ? error.message : 'The saved report could not be loaded.');
+  } finally {
+    if (activeRun === current) {
+      activeRun = null;
+      setBusy(false);
+    }
+  }
+}
+
 async function checkRuntime() {
   try {
     const response = await fetch('/api/health', { cache: 'no-store', credentials: 'same-origin' });
@@ -603,3 +695,4 @@ async function checkRuntime() {
 
 updateBaselineSelection();
 checkRuntime();
+loadSavedReport();

@@ -20,8 +20,9 @@ const metricNames: Record<string, string> = {
   'cumulative-layout-shift': 'Cumulative Layout Shift (CLS)',
 };
 const metricTitle = (name: string) => Object.hasOwn(metricNames, name) ? metricNames[name] : name;
+const readableNumber = (value:number,unit:JsonValue|undefined) => value!==0 && unit==='unitless' && Math.abs(value)<0.0001 ? (value<0?'>−0.0001':'<0.0001') : String(Number(value.toFixed(unit==='unitless'?4:unit==='points'?0:1)));
 const metricValue = (value: JsonValue | undefined, unit: JsonValue | undefined) => typeof value !== 'number'
-  ? '—' : esc(typeof unit === 'string' && unit !== 'unitless' ? `${value} ${unit}` : value);
+  ? '—' : esc(typeof unit === 'string' && unit !== 'unitless' ? `${readableNumber(value,unit)} ${unit}` : readableNumber(value,unit));
 const asObject = (value: JsonValue | undefined): JsonObject | undefined =>
   value && typeof value === 'object' && !Array.isArray(value) ? value : undefined;
 
@@ -130,6 +131,13 @@ export function renderReport(report: AgentReport): string {
   const coverage = new Map(report.coverage.map((item, index) => [item.id, `coverage-${index + 1}`]));
   const artifacts = new Map(report.artifacts.map((item, index) => [item.id, `artifact-${index + 1}`]));
   const coverageCount = report.coverage.filter((item) => item.status === 'complete').length;
+  let cards:Array<[string,string|number]>=[['Completed checks',coverageCount],['Limited checks',report.coverage.filter(c=>c.status==='incomplete'||c.status==='unavailable').length],['Findings to review',report.findings.length]];
+  if(report.agentId==='accessibility')cards=[['Automated findings',report.findings.filter(f=>f.disposition==='finding').length],['Manual review items',report.findings.filter(f=>f.disposition==='review-needed').length],['Completed checks',coverageCount]];
+  const pages=asObject(report.measurements?.navigation)?.pages;
+  if(report.agentId==='performance'&&Array.isArray(pages)&&pages[0]){
+    const page=asObject(pages[0]);const metrics=asObject(page?.metrics),score=asObject(metrics?.['performance-score']),lcp=asObject(metrics?.['largest-contentful-paint']);
+    if(page)cards=[['Median score',typeof score?.median==='number'?`${Math.round(score.median)} / 100`:'Unavailable'],['Largest paint',typeof lcp?.median==='number'?`${(lcp.median/1000).toFixed(2)} s`:'Unavailable'],['Samples collected',`${page.succeeded} / ${page.planned}`]];
+  }
   return `<!doctype html>
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -138,16 +146,21 @@ export function renderReport(report: AgentReport): string {
 <style>
 :root{color-scheme:light;--paper:#faf8f4;--card:#fffefb;--ink:#22261f;--muted:#4d5245;--accent:#1f5c3f;--forest:#143d2a;--soft:#e7f0ea;--rule:#dedfd3}
 *{box-sizing:border-box}body{margin:0;background:var(--paper);color:var(--ink);font:16px/1.55 system-ui,sans-serif;overflow-wrap:anywhere}main,header>div{width:min(960px,calc(100% - 36px));margin:auto}header{padding:32px 0;background:var(--forest);color:var(--paper)}h1{font-size:clamp(1.75rem,5vw,2.65rem);line-height:1.15;margin:.3em 0 .1em}h2,h3{line-height:1.2;margin:.1em 0 .5em}h2{font-size:1.5rem}h3{font-size:1.09rem}p{margin:.65em 0}main{padding:26px 0 56px}section{margin:0 0 18px;padding:clamp(16px,4vw,28px);background:var(--card);border:1px solid var(--rule);border-radius:14px}article{padding:16px 0;border-top:1px solid var(--rule);scroll-margin-top:12px}article:last-child{padding-bottom:0}article:target{outline:2px solid var(--accent);outline-offset:4px}dl{display:grid;grid-template-columns:fit-content(38%) minmax(0,1fr);gap:5px 12px;margin:12px 0}dl:empty{display:none}dt{font-weight:650}dd{margin:0}pre{padding:12px;background:var(--soft);white-space:pre-wrap;overflow-wrap:anywhere;border-radius:8px}pre,code{font-size:.86em}small,.meta,.references{color:var(--muted);font-size:.9em}.eyebrow{font-size:.76rem;letter-spacing:.13em;text-transform:uppercase;font-weight:700}.table{overflow:auto}table{border-collapse:collapse;width:100%;font-size:.91em;text-align:left}caption{text-align:left;font-weight:700;margin:0 0 8px}td,th{padding:8px;vertical-align:top;border-bottom:1px solid var(--rule)}a{color:var(--accent);text-underline-offset:3px}a:focus-visible{outline:2px solid var(--accent);outline-offset:3px}@media print{header{background:none;color:var(--ink)}main,header>div{width:100%}section{border-radius:0;background:none}article{break-inside:avoid}}
+.highlights{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin:22px 0}.highlight{padding:16px 12px;background:#ffffff16;border:1px solid #ffffff33;border-radius:10px}.highlight strong{display:block;font-size:clamp(1.2rem,3vw,2rem);line-height:1.2}.highlight span{display:block;margin-top:8px;font-size:.78rem;color:#d1e5d6}summary{cursor:pointer}
+@media(max-width:480px){.highlights{grid-template-columns:1fr;gap:7px}.highlight{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:12px}.highlight strong{font-size:1.5rem;white-space:nowrap}.highlight span{margin:0;text-align:right}}
 </style></head><body>
-<header><div><p class="eyebrow">Solvd · Website Maintenance</p><h1>${esc(names[report.agentId])}</h1><p>Run report</p></div></header>
+<header><div><p class="eyebrow">Solvd · Website Maintenance</p><h1>${esc(names[report.agentId])}</h1><p>${esc(report.testedUrl)}</p>
+<div class="highlights">${cards.map(([label,value])=>`<div class="highlight"><strong>${esc(value)}</strong><span>${esc(label)}</span></div>`).join('')}</div>
+${report.agentId==='performance'?'<p>Medians describe the first tested page. Review sample spread before treating a difference as a change.</p>':''}
+<p>Collection: ${esc(report.collectionStatus)} · AI assessment: ${esc(report.assessment.status)} · Comparison: ${esc(report.comparison.status)}</p></div></header>
 <main>
-${section('Run overview', `<dl>${label('Run ID', report.runId)}${label('Submitted URL', report.submittedUrl)}${label('Tested URL', report.testedUrl)}
+${section('Run overview', `<details><summary>Run details and coverage</summary><dl>${label('Run ID', report.runId)}${label('Submitted URL', report.submittedUrl)}${label('Tested URL', report.testedUrl)}
   ${label('Started', report.startedAt)}${label('Finished', report.completedAt)}
   ${label('Collection status', report.collectionStatus)}${label('Assessment status', report.assessment.status)}
   ${label('Coverage', `${coverageCount} of ${report.coverage.length} recorded coverage entries marked complete`)}
   ${label('Retention', report.retention.status)}${label('Retention details', report.retention.reason)}
   ${label('Baseline export', report.baseline ? 'Available in the run’s JSON exports.' : report.baselineUnavailableReason)}
-  </dl>${paragraph(limits[report.agentId])}`)}
+  </dl></details>${paragraph(limits[report.agentId])}`)}
 ${section('Findings and observations', report.findings.map((item) => renderFinding(item, evidence, coverage)).join('')
   || paragraph('No findings or observations were recorded. Check the coverage before drawing conclusions.'))}
 ${renderComparison(report)}

@@ -112,6 +112,13 @@ input[type="file"]::file-selector-button { padding: 7px 9px; margin-right: 8px; 
 .report-overview .button.secondary { background: transparent; color: var(--card); }
 .report-overview .button.secondary:hover { background: var(--accent); }
 .report-overview .button:focus-visible, .report-overview h2:focus-visible { outline-color: var(--card); }
+.metric-highlights { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:10px; margin:22px 0 14px; }
+.metric-highlight { padding:16px 12px; background:rgba(255,255,255,.09); border:1px solid rgba(255,255,255,.18); border-radius:10px; }
+.metric-highlight strong { display:block; font-size:clamp(1.2rem,3vw,2rem); line-height:1.2; font-weight:720; }
+.metric-highlight span { display:block; margin-top:8px; font-size:.76rem; color:var(--green-light); }
+.report-target { font-size:1rem; opacity:.94; }
+.run-details { margin:14px 0; font-size:.86rem; }
+.run-details summary { cursor:pointer; color:var(--green-light); }
 .eyebrow { margin-bottom: 7px; font-size: .73rem; letter-spacing: .1em; font-weight: 740; text-transform: uppercase; }
 .report h2 { font-size: clamp(1.35rem, 3vw, 1.85rem); }
 .report h3 { color: var(--green-deep); font-size: 1.1rem; }
@@ -155,6 +162,12 @@ input[type="file"]::file-selector-button { padding: 7px 9px; margin-right: 8px; 
 @media (max-width: 420px) {
   .target-row { grid-template-columns: 1fr; }
   .button.primary { width: 100%; }
+}
+@media (max-width:480px) {
+  .metric-highlights { grid-template-columns:1fr; gap:7px; }
+  .metric-highlight { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:12px; }
+  .metric-highlight strong { font-size:1.5rem; white-space:nowrap; }
+  .metric-highlight span { margin:0; text-align:right; }
 }
 @media (prefers-reduced-motion: reduce) {
   *, *::before { animation: none !important; transition: none !important; }

@@ -16,3 +16,4 @@ test-results/
 .superpowers/
 .remote-runs/
 collector-result.json
+.playwright-browsers/
