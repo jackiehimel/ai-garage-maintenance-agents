@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {runInNewContext} from 'node:vm';
 import type { AxeResults, NodeResult, Result } from 'axe-core';
-import { activationPermitted, assembleAccessibilityResult, collectAccessibility, publicAccessibilityGuardScript } from '../src/agents/accessibility.js';
+import { activationPermitted, applyAccessibilityComparisonCoverage, assembleAccessibilityResult, collectAccessibility, publicAccessibilityGuardScript } from '../src/agents/accessibility.js';
 import type { AccessibilityScan } from '../src/agents/accessibility.js';
 import { baselineIdentity, compareFindings, createBaseline } from '../src/core/baseline.js';
 import { validateRequest } from '../src/core/input.js';
@@ -18,6 +18,7 @@ const request = validateRequest({
     source:{name:'Accessibility review',reference:'Review ticket 23',start:'2026-10-01',end:'2026-10-02'},tool:'NVDA'}]},
 });
 const navigation = {status:'complete',testedUrl:page} as const;
+const readiness = {status:'complete'} as const;
 const keyboard = {status:'complete',steps:[
   {index:1,step:{action:'key',key:'Tab'},status:'passed',focusBefore:{tag:'body',selector:'body'},focusAfter:{tag:'button',selector:'#menu-button'}},
   {index:2,step:{action:'assert-focus',selector:'#menu-button'},status:'passed',focusBefore:{tag:'button',selector:'#menu-button'},focusAfter:{tag:'button',selector:'#menu-button'},actual:true},
@@ -36,7 +37,7 @@ function axe(violations: Result[], incomplete: Result[] = [], passes: Result[] =
     testEnvironment:{userAgent:'Chromium fixture',windowWidth:1365,windowHeight:768},toolOptions:{}};
 }
 function scan(axeResult?: AxeResults, path: AccessibilityScan['keyboard'] = keyboard): AccessibilityScan {
-  return {scope:{page,state:'open-menu'},navigation,keyboard:path,axe:axeResult,
+  return {scope:{page,state:'open-menu'},navigation,readiness,keyboard:path,axe:axeResult,
     components:{counts:{'main-menu':1},mappings:[
       {target:['#menu-button'],componentIds:['main-menu']},
       {target:['#close'],componentIds:['main-menu']},
@@ -44,7 +45,7 @@ function scan(axeResult?: AxeResults, path: AccessibilityScan['keyboard'] = keyb
     ]}};
 }
 function initial(axeResult = axe([])): AccessibilityScan {
-  return {scope:{page,state:'initial'},navigation,axe:axeResult,components:{counts:{'main-menu':1},mappings:[]}};
+  return {scope:{page,state:'initial'},navigation,readiness,axe:axeResult,components:{counts:{'main-menu':1},mappings:[]}};
 }
 
 test('normalizes actual instances, independent manual reviews, component mappings, and raw output', () => {
@@ -103,11 +104,25 @@ test('compatible comparison separates resolved, new, persistent, and unverified 
   assert.deepEqual(comparison.findings.filter(({before}) => before).map(({status}) => status),['inconclusive','inconclusive']);
   assert.ok(failed.evidence.some((evidence) => evidence.kind === 'keyboard-step' && evidence.key === '2'));
 
-  const becameManual = assembleAccessibilityResult(configured,runtime,page,[
+  const remoteResult = assembleAccessibilityResult(request,runtime,page,[
     initial(),
     scan(axe([], [rule('button-name',[node('#close')])], [rule('button-name',[node('#menu-button')])])),
   ]);
+  const becameManual = applyAccessibilityComparisonCoverage(configured,remoteResult);
   assert.equal(compareFindings(identity,becameManual,exported.baseline).findings.find(({before}) => before?.scope.element === '#close')?.status,'inconclusive');
+
+  const redirected = assembleAccessibilityResult(request,runtime,page,[
+    initial(),
+    {...scan(axe([],[],[rule('button-name',[node('#menu-button')])])),navigation:{status:'complete',testedUrl:page + 'new-route'}},
+  ]);
+  applyAccessibilityComparisonCoverage(configured,redirected);
+  assert.equal(compareFindings(identity,redirected,exported.baseline).findings.find(({before}) => before?.scope.element === '#close')?.status,'inconclusive');
+
+  const missingResources = assembleAccessibilityResult(request,runtime,page,[
+    initial(),
+    {...scan(axe([],[],[rule('button-name',[node('#menu-button')])])),readiness:{status:'incomplete',reason:'The application bundle did not load.'}},
+  ]);
+  assert.equal(compareFindings(identity,missingResources,exported.baseline).findings.find(({before}) => before?.scope.element === '#close')?.status,'inconclusive');
 });
 
 test('activation policy permits bounded widget keys and rejects form, input, link, and editor targets', () => {

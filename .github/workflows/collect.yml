@@ -23,7 +23,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        agent: [seo-ai-search, accessibility, performance]
+        agent: ${{ github.event_name == 'workflow_dispatch' && fromJSON(format('["{0}"]', fromJSON(inputs.request).agentId)) || fromJSON('["seo-ai-search","accessibility","performance"]') }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4

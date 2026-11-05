@@ -4,7 +4,7 @@ import { collectionStatus } from './core/evidence.js';
 import { assess } from './core/assessment.js';
 import { createRunId, describeArtifact, openRunStore } from './core/store.js';
 import { collectSeo } from './agents/seo.js';
-import { collectAccessibility } from './agents/accessibility.js';
+import { collectAccessibility, applyAccessibilityComparisonCoverage } from './agents/accessibility.js';
 import { collectPerformance, comparePerformanceMetrics } from './agents/performance.js';
 import type { AgentReport, CollectorOptions, CollectorResult, ValidatedRequest } from './core/types.js';
 
@@ -20,6 +20,7 @@ export async function runAgent(input:unknown,options:RunOptions={}):Promise<Agen
   const runId = createRunId();
   const collect = options.collector ?? {'seo-ai-search':collectSeo,accessibility:collectAccessibility,performance:collectPerformance}[request.agentId];
   const result = await collect(request,{executablePath:options.executablePath ?? process.env.CHROME_PATH,signal:options.signal});
+  if(request.agentId==='accessibility') applyAccessibilityComparisonCoverage(request,result);
   const identity = baselineIdentity(request,result.runtime,result.testedUrl);
   const comparison = compareFindings(identity,result,request.baseline);
   if (request.agentId==='performance' && comparison.status==='compatible' && request.baseline) comparison.metrics=comparePerformanceMetrics(result,request.baseline);

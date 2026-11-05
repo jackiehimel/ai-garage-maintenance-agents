@@ -2,7 +2,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { setTimeout as delay } from 'node:timers/promises';
 import { AxeBuilder } from '@axe-core/playwright';
 import type { AxeResults, NodeResult, Result } from 'axe-core';
-import type { Page } from 'playwright';
+import type { Page, Request } from 'playwright';
 import { openBrowserSession } from '../core/browser.js';
 import type { BrowserSession } from '../core/browser.js';
 import { canonicalJson, createEvidence, createFinding } from '../core/evidence.js';
@@ -24,6 +24,7 @@ const MAX_ARTIFACTS_BYTES = 90_000_000;
 const MAX_STRUCTURED_INSTANCES = 850;
 const STATE_DEADLINE_MS = 28_000;
 const ASSERTION_TIMEOUT_MS = 900;
+const PAGE_LOAD_TIMEOUT_MS = 4_500;
 
 type ScanScope = Scope & {state:string};
 type Focus = { tag:string; selector:string; role?:string; inShadow?:boolean; frameBoundary?:boolean };
@@ -35,6 +36,7 @@ interface KeyboardObservation {
   focusBefore?:Focus | null;
   focusAfter?:Focus | null;
   actual?:JsonValue;
+  selectorMatches?:number;
   evaluated?:boolean;
   reason?:string;
 }
@@ -46,6 +48,7 @@ interface ComponentSnapshot {
 export interface AccessibilityScan {
   scope:ScanScope;
   navigation:{status:'complete' | 'incomplete' | 'unavailable';testedUrl?:string;httpStatus?:number;reason?:string};
+  readiness?:{status:'complete' | 'incomplete';reason?:string;data?:JsonObject};
   keyboard?:{status:'complete' | 'incomplete';steps:KeyboardObservation[];reason?:string};
   axe?:AxeResults;
   axeReason?:string;
@@ -118,37 +121,52 @@ function remediation(rule:Result):{investigate:string;correct:string} {
   }
 }
 
-function uncertainComparison(request:ValidatedRequest, scan:AccessibilityScan):string | undefined {
-  if (!scan.axe) return undefined;
-  if (scan.axe.incomplete.some((rule) => rule.id === 'frame-tested')) return 'axe could not verify one or more frames.';
+function dataObject(data:JsonValue | undefined):JsonObject | undefined {
+  return data && typeof data === 'object' && !Array.isArray(data) ? data : undefined;
+}
+
+/** Qualify comparison coverage in place, including results from a remote runner without the baseline. */
+export function applyAccessibilityComparisonCoverage(request:ValidatedRequest,result:CollectorResult):CollectorResult {
   const baseline = request.baseline;
-  if (!baseline || baseline.identity.agentId !== AGENT) return undefined;
-  const inScope = (item:{scope:Scope}) => item.scope.page === scan.scope.page && item.scope.state === scan.scope.state;
-  const earlierNavigation = baseline.evidence.find((item) => inScope(item) && item.kind === 'navigation');
-  const earlierUrl = (earlierNavigation?.data as {testedUrl?:string} | undefined)?.testedUrl;
-  if (earlierUrl && scan.navigation.testedUrl !== earlierUrl) return 'The page navigated to a different final URL than the baseline.';
-  const outcomes = new Set([
-    ...scan.axe.violations,...scan.axe.passes,...scan.axe.inapplicable,...scan.axe.incomplete,
-  ].map(({id}) => id));
-  const before = baseline.evidence.filter((item) => inScope(item) && item.kind === 'axe-violation');
-  for (const item of before) {
-    const ruleId = item.key?.split('#',1)[0];
-    if (!ruleId) continue;
-    if (!outcomes.has(ruleId)) return 'A rule that produced a baseline violation was not reported by axe: ' + ruleId + '.';
-    if (scan.axe.incomplete.some((rule) => rule.id === ruleId && (rule.error || !rule.nodes.length ||
-      rule.nodes.some((node) => elementIdentity(node.target) === item.scope.element)))) {
-      return 'axe marked a baseline violation as requiring manual review: ' + ruleId + '.';
+  if (!baseline || baseline.identity.agentId !== AGENT) return result;
+  for (const entry of result.coverage) {
+    if (entry.subject !== 'axe-core scan' || entry.status !== 'complete') continue;
+    const inScope = (item:{scope:Scope}) => item.scope.page === entry.scope.page && item.scope.state === entry.scope.state;
+    const prior = baseline.evidence.filter(inScope);
+    const current = result.evidence.filter(inScope);
+    const priorUrl = dataObject(prior.find((item) => item.kind === 'navigation')?.data)?.testedUrl;
+    const currentUrl = dataObject(current.find((item) => item.kind === 'navigation')?.data)?.testedUrl;
+    const summary = dataObject(current.find((item) => item.kind === 'axe-summary')?.data);
+    const outcomes = new Set(['violations','passes','inapplicable','incomplete'].flatMap((key) =>
+      Array.isArray(summary?.[key]) ? summary[key] : []));
+    const ruleOf = (item:{key?:string;data?:JsonValue}) => dataObject(item.data)?.rule ?? item.key?.split('#',1)[0];
+    const sameElement = (before:Scope,after:Scope) => !before.element || !after.element || before.element === after.element;
+    let reason:string | undefined;
+    if (typeof priorUrl === 'string' && priorUrl !== currentUrl) {
+      reason = 'The page navigated to a different final URL than the baseline.';
+    } else {
+      for (const item of prior.filter((evidence) => evidence.kind === 'axe-violation')) {
+        const rule = ruleOf(item);
+        if (typeof rule !== 'string') continue;
+        if (!outcomes.has(rule)) { reason = 'A rule that produced a baseline violation was not reported by axe: ' + rule + '.'; break; }
+        if (current.some((evidence) => evidence.kind === 'axe-review' && ruleOf(evidence) === rule &&
+          (dataObject(evidence.data)?.ruleError === true || sameElement(item.scope,evidence.scope)))) {
+          reason = 'axe marked a baseline violation as requiring manual review: ' + rule + '.';
+          break;
+        }
+      }
+      if (!reason) for (const item of prior.filter((evidence) => evidence.kind === 'axe-review')) {
+        const rule = ruleOf(item);
+        if (typeof rule === 'string' && current.some((evidence) => evidence.kind === 'axe-violation' && ruleOf(evidence) === rule &&
+          (dataObject(item.data)?.ruleError === true || sameElement(item.scope,evidence.scope)))) {
+          reason = 'A current violation was inconclusive in the baseline: ' + rule + '.';
+          break;
+        }
+      }
     }
+    if (reason) { entry.status = 'incomplete'; entry.reason = reason; }
   }
-  const beforeManual = baseline.evidence.filter((item) => inScope(item) && item.kind === 'axe-review');
-  for (const item of beforeManual) {
-    const ruleId = item.key?.split('#',1)[0];
-    if (scan.axe.violations.some((rule) => rule.id === ruleId && (!item.scope.element ||
-      rule.nodes.some((node) => elementIdentity(node.target) === item.scope.element)))) {
-      return 'A current violation was inconclusive in the baseline: ' + ruleId + '.';
-    }
-  }
-  return undefined;
+  return result;
 }
 
 /** Translate captured browser observations into portable evidence without making a browser claim. */
@@ -181,6 +199,8 @@ export function assembleAccessibilityResult(
       source:{kind:'measured',name:DOCUMENT},
       data:{status:navigation.status,testedUrl:navigation.testedUrl ?? null,httpStatus:navigation.httpStatus ?? null,reason:navigation.reason ?? null},
     }));
+    const readinessId = cover('Document resource readiness',scan.readiness?.status ?? 'unavailable',
+      scan.readiness?.reason ?? (scan.readiness ? undefined : navigation.reason),scan.readiness?.data);
 
     let pathId:string | undefined;
     if (state) {
@@ -196,7 +216,8 @@ export function assembleAccessibilityResult(
           summary:'Step ' + index + ' · ' + step.action + ('key' in step ? ' ' + step.key : '') + ' · ' + observation.status,
           source:{kind:'measured',name:KEYBOARD},data:{
             step:{...step},status:observation.status,focusBefore:observation.focusBefore ?? null,focusAfter:observation.focusAfter ?? null,
-            actual:observation.actual ?? null,evaluated:observation.evaluated ?? observation.status === 'passed',reason:observation.reason ?? null,
+            actual:observation.actual ?? null,selectorMatches:observation.selectorMatches ?? null,
+            evaluated:observation.evaluated ?? observation.status === 'passed',reason:observation.reason ?? null,
           },
         });
         result.evidence.push(evidence);
@@ -210,7 +231,7 @@ export function assembleAccessibilityResult(
             agentId:AGENT,rule,scope:evidence.scope,key:String(index),title:'Configured ' + step.action.slice(7) + ' assertion failed',
             summary:observation.reason ?? 'The recorded browser state did not match the configured expectation.',
             severity:step.action === 'assert-focus' ? 'high' : 'medium',ownerPriority:owner.get(rule),disposition:'finding',
-            evidenceIds:[evidence.id],coverageIds:[navigationId,assertionId],
+            evidenceIds:[evidence.id],coverageIds:[navigationId,readinessId,assertionId],
             investigate:'Replay the recorded steps and inspect the actual focus, target, or attribute after the assertion.',
             correct:'Verify the intended state, then correct the focus or state management if it differs from that intent.',
             recheck:'Repeat this configured path and confirm the same assertion passes in the browser; review the interaction with a keyboard as appropriate.',
@@ -242,8 +263,8 @@ export function assembleAccessibilityResult(
       retainedBytes += rawBytes;
       result.artifacts.push({id:rawId,label:'axe-core raw JSON · ' + scope.state,mediaType:'application/json',bytes:raw,scope});
     }
-    const uncertainty = uncertainComparison(request,scan);
-    const scanReason = uncertainty ?? (truncated ? 'Structured finding limit reached; consult the raw axe result for remaining instances.' :
+    const uncertainty = axe.incomplete.some((rule) => rule.id === 'frame-tested') ? 'axe could not verify one or more frames.' : undefined;
+    const scanReason = scan.readiness?.reason ?? uncertainty ?? (truncated ? 'Structured finding limit reached; consult the raw axe result for remaining instances.' :
       !rawId ? 'The raw axe result exceeded the artifact retention limits.' : undefined);
     const axeId = cover('axe-core scan',scanReason ? 'incomplete' : 'complete',scanReason,{
       executed:true,violationRules:axe.violations.length,reviewRules:axe.incomplete.length,
@@ -283,7 +304,7 @@ export function assembleAccessibilityResult(
             agentId:AGENT,kind:manual ? 'axe-review' : 'axe-violation',scope:instanceScope,key,
             summary,source:{kind:'measured',name:AXE,reference:rule.helpUrl || undefined,observedAt:axe.timestamp},
             artifactIds:rawId ? [rawId] : undefined,
-            data:{rule:rule.id,impact:impact ?? null,tags:rule.tags,criteria:rule.tags.map(criterion).filter((value):value is string => !!value),
+            data:{rule:rule.id,ruleError:!!engineError,impact:impact ?? null,tags:rule.tags,criteria:rule.tags.map(criterion).filter((value):value is string => !!value),
               helpUrl:rule.helpUrl,description:clean(rule.description,500),target:node ? JSON.parse(canonicalJson(node.target)) as JsonValue : null,
               html:node ? clean(node.html,500) : null,checks:node ? observedChecks(node) : null,componentCandidates:candidates,
               componentLabel:request.components.find(({id}) => id === component)?.label ?? null},
@@ -294,7 +315,7 @@ export function assembleAccessibilityResult(
             agentId:AGENT,rule:rule.id,scope:instanceScope,key:manual ? 'review:' + key : key,
             title:safeText(rule.help,275,rule.id),summary,severity:severity(impact,manual),ownerPriority:owner.get(rule.id),
             disposition:manual ? 'review-needed' : 'finding',evidenceIds:[evidence.id],
-            coverageIds:[navigationId,...(pathId ? [pathId] : []),axeId,...(component ? [componentId] : [])],
+            coverageIds:[navigationId,readinessId,...(pathId ? [pathId] : []),axeId,...(component ? [componentId] : [])],
             investigate:manual ? 'Use the axe evidence and linked rule guidance to verify this instance manually.' : guidance.investigate,
             correct:manual ? 'Change the implementation only after review confirms an accessibility barrier.' : guidance.correct,
             recheck:'Repeat the axe scan in ' + recheckState(scope) + ' and verify the relevant behavior manually.',
@@ -315,7 +336,7 @@ export function assembleAccessibilityResult(
     automationLimit:AUTOMATION_LIMIT,requestedScopes:request.pages.length + request.states.length,
     suppliedHumanReviews:request.supplied?.humanReviews?.length ?? 0,
   };
-  return result;
+  return applyAccessibilityComparisonCoverage(request,result);
 }
 
 interface ActivationTarget {tag:string;type?:string;role?:string;inForm:boolean;editable:boolean}
@@ -458,9 +479,9 @@ async function exerciseKeyboard(
     const observation:KeyboardObservation = {index,step,status:'failed',evaluated:false};
     steps.push(observation);
     let before:GuardReading | undefined;
+    const requestsBefore = getBlockedNavigations();
     try {
       signal.throwIfAborted();
-      const navigations = getBlockedNavigations();
       before = await readGuard(page,guardKey);
       observation.focusBefore = before.focus;
       if (step.action === 'key') {
@@ -483,14 +504,15 @@ async function exerciseKeyboard(
           await delay(55,undefined,{signal});
         } while (true);
         observation.actual = typeof reading.actual === 'string' ? clean(reading.actual,500) : (reading.actual ?? null);
-        observation.evaluated = step.action !== 'assert-attribute' || reading.count === 1;
+        observation.selectorMatches = reading.count;
+        observation.evaluated = true;
         if (!keyboardActual(step,reading)) {
           throw new Error('The observed browser state did not match ' + step.action + ' for ' + step.selector + '.');
         }
       }
       const after = await readGuard(page,guardKey);
       observation.focusAfter = after.focus;
-      if (after.blocked !== before.blocked || getBlockedNavigations() !== navigations) {
+      if (after.blocked !== before.blocked || getBlockedNavigations() !== requestsBefore) {
         observation.evaluated = false;
         throw new Error('The public read-only guard blocked an activation, form submission, or navigation.');
       }
@@ -498,6 +520,7 @@ async function exerciseKeyboard(
     } catch (error) {
       reason = note(error);
       observation.reason = reason;
+      if (getBlockedNavigations() !== requestsBefore) observation.evaluated = false;
       if (!signal.aborted && !('focusAfter' in observation)) {
         try {
           const after = await readGuard(page,guardKey);
@@ -556,19 +579,19 @@ async function mapComponents(page:Page,configs:ComponentConfig[],axe:AxeResults)
   return {counts:observed.counts,mappings:observed.mappings,limitations};
 }
 
-function withAcceptedOrigin(configuredUrl:string,origin:string):string {
-  const configured = new URL(configuredUrl);
-  const accepted = new URL(origin);
-  accepted.pathname = configured.pathname;
-  accepted.search = configured.search;
-  accepted.hash = configured.hash;
-  return accepted.href;
-}
-
 function sameDocumentUrl(a:string,b:string):boolean {
   const first = new URL(a), second = new URL(b);
   first.hash = ''; second.hash = '';
   return first.href === second.href;
+}
+
+function criticalRequest(request:Request,origin:string):boolean {
+  const type = request.resourceType();
+  if (!/^https?:\/\//i.test(request.url())) return false;
+  if (['document','script','stylesheet','font'].includes(type)) return true;
+  if (!['xhr','fetch'].includes(type) || request.method() !== 'GET') return false;
+  try { return new URL(request.url()).origin === origin; }
+  catch { return false; }
 }
 
 async function captureScope(
@@ -577,6 +600,36 @@ async function captureScope(
 ):Promise<void> {
   const guardKey = '__a11y_' + randomUUID();
   await page.addInitScript({content:publicAccessibilityGuardScript(guardKey)});
+  const failures = new Set<string>();
+  let readinessTimedOut = false;
+  let sealed = false;
+  let monitorOrigin = new URL(url).origin;
+  let blockedRequests = 0;
+  let navigationFinished = false;
+  let observedRequests = 0;
+  const recordFailure = (request:Request,description:string) => {
+    if (sealed || !criticalRequest(request,monitorOrigin) || failures.size >= 24) return;
+    let location = '(invalid resource URL)';
+    try { const resource = new URL(request.url()); location = resource.origin + resource.pathname; } catch { /* Retain the failure without a URL. */ }
+    failures.add(clean(request.resourceType() + ' ' + location + ' (' + description + ')',350));
+  };
+  const updateReadiness = () => {
+    const reason = readinessTimedOut ? 'The page did not reach the load event within the readiness deadline.' :
+      failures.size ? 'One or more document, script, stylesheet, font, or same-origin data requests failed.' : undefined;
+    scan.readiness = {status:reason ? 'incomplete' : 'complete',reason,data:{observedRequests,failedResources:[...failures]}};
+  };
+  page.on('request',(request) => { if (!sealed && criticalRequest(request,monitorOrigin)) observedRequests++; });
+  page.on('requestfailed',(request) => { recordFailure(request,request.failure()?.errorText ?? 'request failed'); });
+  page.on('response',(response) => { if (response.status() >= 400) recordFailure(response.request(),'HTTP ' + response.status()); });
+  await page.route('**/*',async (route) => {
+    const request = route.request();
+    if (sealed || (navigationFinished && request.isNavigationRequest() && request.frame() === page.mainFrame())) {
+      blockedRequests++;
+      await route.abort('blockedbyclient').catch(() => {});
+    } else {
+      await route.fallback().catch(() => {});
+    }
+  });
   signal.throwIfAborted();
   const response = await page.goto(url,{waitUntil:'domcontentloaded'});
   const opened = parsePublicTarget(page.url());
@@ -591,35 +644,43 @@ async function captureScope(
     scan.navigation = {status:'incomplete',testedUrl:opened.href,httpStatus,reason:'The final document returned HTTP ' + httpStatus + '.'};
     return;
   }
+  const mediaType = response.headers()['content-type']?.split(';',1)[0]?.trim().toLowerCase();
+  if (mediaType !== 'text/html' && mediaType !== 'application/xhtml+xml') {
+    scan.navigation = {status:'incomplete',testedUrl:opened.href,httpStatus,reason:'The final response was not served as an HTML document.'};
+    return;
+  }
+  navigationFinished = true;
+  monitorOrigin = opened.origin;
   scan.navigation = {status:'complete',testedUrl:opened.href,httpStatus};
+  try { await page.waitForLoadState('load',{timeout:PAGE_LOAD_TIMEOUT_MS}); }
+  catch (error) {
+    if (!(error instanceof Error && error.name === 'TimeoutError')) throw error;
+    readinessTimedOut = true;
+  }
+  updateReadiness();
+  signal.throwIfAborted();
 
-  let blockedNavigations = 0;
-  await page.route('**/*',async (route) => {
-    const request = route.request();
-    if (request.isNavigationRequest() && request.frame() === page.mainFrame()) {
-      blockedNavigations++;
-      await route.abort('blockedbyclient').catch(() => {});
-    } else {
-      await route.fallback().catch(() => {});
-    }
-  });
+  // Configured focus and keyboard actions must not initiate a new request, even a GET.
+  // Resources from the initial load are allowed under the shared protected egress policy.
+  sealed = !!state?.steps.length;
   const guard = await readGuard(page,guardKey);
   if (state) {
-    scan.keyboard = await exerciseKeyboard(page,state,guardKey,signal,() => blockedNavigations);
+    scan.keyboard = await exerciseKeyboard(page,state,guardKey,signal,() => blockedRequests);
     if (scan.keyboard.status !== 'complete') return;
   }
-  if (!sameDocumentUrl(opened.href,page.url()) || blockedNavigations || (await readGuard(page,guardKey)).blocked !== guard.blocked) {
-    scan.axeReason = 'The page attempted a blocked action or changed documents before it could be scanned.';
+  if (!sameDocumentUrl(opened.href,page.url()) || blockedRequests || (await readGuard(page,guardKey)).blocked !== guard.blocked) {
+    scan.axeReason = 'The page attempted a blocked request or form action, or changed documents before it could be scanned.';
     if (scan.keyboard) scan.keyboard = {...scan.keyboard,status:'incomplete',reason:scan.axeReason};
     return;
   }
   signal.throwIfAborted();
   const axe = await new AxeBuilder({page}).options({resultTypes:['violations','incomplete']}).analyze();
-  if (!sameDocumentUrl(opened.href,page.url()) || blockedNavigations || (await readGuard(page,guardKey)).blocked !== guard.blocked) {
-    scan.axeReason = 'The page attempted a blocked action or changed documents during the axe scan.';
+  if (!sameDocumentUrl(opened.href,page.url()) || blockedRequests || (await readGuard(page,guardKey)).blocked !== guard.blocked) {
+    scan.axeReason = 'The page attempted a blocked request or form action, or changed documents during the axe scan.';
     if (scan.keyboard) scan.keyboard = {...scan.keyboard,status:'incomplete',reason:scan.axeReason};
     return;
   }
+  updateReadiness();
   scan.axe = axe;
   if (components.length) scan.components = await mapComponents(page,components,axe);
 }
@@ -654,7 +715,8 @@ export async function collectAccessibility(request:ValidatedRequest,options:Coll
       try {
         signal.throwIfAborted();
         page = await session.newPage();
-        const url = index === 0 ? scope.page : withAcceptedOrigin(scope.page,session.scope.origin());
+        // Only the exact target's redirect has been observed. Other configured URLs are used as submitted.
+        const url = index > 0 && scope.page === request.targetUrl ? testedUrl : scope.page;
         await abortable(captureScope(page,session,scan,state,request.components,url,index === 0,signal),signal);
       } catch (error) {
         const reason = note(error);
