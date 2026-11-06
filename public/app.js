@@ -20,7 +20,7 @@ const agents = {
   },
   accessibility: {
     title: 'Accessibility Regression',
-    limit: 'Automated and scripted checks do not establish WCAG conformance. Coverage identifies where human evaluation is still needed.',
+    limit: 'Automated accessibility check. See detected issues, recommended actions and checks that need human review.',
   },
   performance: {
     title: 'Performance Regression',
@@ -78,7 +78,7 @@ function headlineMetrics(report) {
       return [['Median score',typeof score?.median==='number'?`${Math.round(score.median)} / 100`:'Unavailable'],['Largest paint',typeof lcp?.median==='number'?`${(lcp.median/1000).toFixed(2)} s`:'Unavailable'],['Samples collected',`${page.succeeded} / ${page.planned}`]];
     }
   }
-  return report.agentId==='accessibility' ? [['Automated findings',measured],['Manual review items',reviews],['Completed checks',complete]] : [['Completed checks',complete],['Limited checks',limited],['Findings to review',report.findings.length]];
+  return report.agentId==='accessibility' ? [['Flagged items',measured],['Human checks needed',reviews],['Completed checks',complete]] : [['Completed checks',complete],['Limited checks',limited],['Findings to review',report.findings.length]];
 }
 
 function element(tag, className, content) {
@@ -259,6 +259,10 @@ function renderOverview(root, report, agent, runPath) {
   ]);
   overview.append(runDetails);
   paragraph(overview, agent.limit, 'meta');
+  if (report.agentId === 'accessibility') {
+    const scope=element('details','supporting-details');scope.append(element('summary','','What this check covers'));
+    paragraph(scope,'Automated and scripted checks do not establish WCAG conformance. The bounded keyboard sample does not check every interactive element, widget operation, other states or screen-reader behavior. Review coverage for outstanding human evaluation.');overview.append(scope);
+  }
   if (report.collectionStatus !== 'complete') {
     paragraph(overview, 'Collection did not finish across the requested scope. Review coverage and diagnostics before interpreting the results.', 'meta');
   }
@@ -283,10 +287,181 @@ function renderOverview(root, report, agent, runPath) {
   return title;
 }
 
+function accessibilityGroups(report) {
+  const evidence = new Map(report.evidence.map(item => [item.id, item]));
+  const grouped = new Map();
+  for (const finding of report.findings) {
+    const key = `${finding.disposition}:${finding.rule}`;
+    if (!grouped.has(key)) grouped.set(key, { rule: finding.rule, disposition: finding.disposition, instances: [] });
+    grouped.get(key).instances.push(finding);
+  }
+  const categories = [
+    { disposition: 'finding', title: 'Automated checks found issues' },
+    { disposition: 'review-needed', title: 'Human checks still needed' },
+    { disposition: 'other', title: 'Other observations' },
+  ];
+  return categories.map(category => {
+    const groups = [...grouped.values()].filter(group => category.disposition === 'other'
+      ? !['finding', 'review-needed'].includes(group.disposition) : group.disposition === category.disposition);
+    const instances = groups.flatMap(group => group.instances);
+    const classify = finding => {
+      const records = finding.evidenceIds.map(id => evidence.get(id)?.data).filter(Boolean);
+      if (records.some(data => (Array.isArray(data.tags) && data.tags.some(tag => typeof tag === 'string' && /^wcag/i.test(tag))) || (Array.isArray(data.criteria) && data.criteria.length))) return 'wcag';
+      if (records.some(data => Array.isArray(data.tags) && data.tags.includes('best-practice'))) return 'best-practice';
+      return 'unspecified';
+    };
+    const wcag = instances.filter(finding => classify(finding) === 'wcag').length;
+    const bestPractice = instances.filter(finding => classify(finding) === 'best-practice').length;
+    let summary = `${instances.length} observations across ${groups.length} rules.`;
+    if (category.disposition === 'finding') summary = `${instances.length} flagged items across ${groups.length} checks: ${wcag} items tied to accessibility requirements; ${bestPractice} best-practice suggestions.${instances.length > wcag + bestPractice ? ` ${instances.length - wcag - bestPractice} items have no recorded accessibility-requirement or best-practice tag.` : ''} Scanner impact is a tool rating, not business priority. These results do not establish WCAG conformance.`;
+    if (category.disposition === 'review-needed') summary = `${instances.length} inconclusive items across ${groups.length} checks. These are not confirmed errors. A person must check the rendered page before deciding whether a change is needed.`;
+    return { ...category, groups, summary };
+  });
+}
+
+function accessibilityGuidance(rule, disposition) {
+  const review = disposition === 'review-needed';
+  const guidance = {
+    'button-name': {
+      title: 'Give buttons a name people can hear', owner: 'Developer',
+      happened: 'The scanner found a button without a descriptive accessible name. People using a screen reader may not know what it does.',
+      next: 'Give the icon-only control a concise, descriptive accessible name that explains its action.',
+      confirm: 'Use the keyboard to reach the control and verify its name and operation with a screen reader; repeat the scan.',
+    },
+    'color-contrast': review ? {
+      title: 'Check text contrast on the displayed background', owner: 'Designer / QA',
+      happened: 'The scanner could not determine contrast. Inspect each recorded reason, including overlap, pseudo-elements, images, gradients or an unknown background where reported.',
+      next: 'Measure the actual displayed foreground and background in the affected state. Change colors only if the contrast fails the threshold for that text size.',
+      confirm: 'Record the measured ratio and applicable text-size threshold, then check the affected states again.',
+    } : {
+      title: 'Improve text contrast where the scanner found a failure', owner: 'Designer / developer',
+      happened: 'The scanner measured text contrast below its applicable threshold. The text may be difficult to read.',
+      next: 'Measure the displayed foreground and background, then adjust either color to meet the applicable text-size threshold. Choose the direction of the change from the measured colors.',
+      confirm: 'Verify the resulting contrast ratio for the text size in each affected state and repeat the scan.',
+    },
+    'video-caption': {
+      title: 'Check whether videos need captions', owner: 'Content owner',
+      happened: 'The scanner could not determine whether these videos require captions.',
+      next: 'Check whether each video contains speech or meaningful audio. Provide synchronized captions if required; do not mark silent decorative videos as missing captions.',
+      confirm: 'Review caption accuracy, completeness and synchronization with meaningful audio; track presence alone cannot establish a pass or failure.',
+    },
+    'landmark-unique': {
+      title: 'Make navigation areas easy to distinguish', owner: 'Developer',
+      happened: 'The scanner found page landmarks that may be difficult to distinguish in assistive technology. This is a best-practice suggestion when tagged as such.',
+      next: 'Review the purpose of each navigation area and give distinct navigation areas meaningful accessible labels.',
+      confirm: 'Inspect the landmark list with a screen reader and verify that people can distinguish the navigation areas.',
+    },
+    region: {
+      title: 'Review how content belongs to page sections', owner: 'Developer',
+      happened: 'The scanner found content outside recognized page landmarks. Check its purpose before changing the page structure.',
+      next: 'Check that meaningful content belongs to an appropriate page section. Review skip links as a special case; do not automatically wrap every flagged element.',
+      confirm: 'Review the page sections and skip-link behavior with keyboard and screen-reader navigation; repeat the scan.',
+    },
+  };
+  const known = Object.hasOwn(guidance, rule) ? guidance[rule] : null;
+  if (known) return review && !['color-contrast', 'video-caption'].includes(rule) ? {
+    ...known, happened: 'The scanner could not reach a conclusion for this rule. This instance needs a human check; it is not a confirmed error.',
+    next: `Inspect the affected instance and rule evidence before making changes. If a barrier is confirmed: ${known.next}`,
+  } : known;
+  return {
+    title: review ? 'Check an unresolved accessibility result' : disposition === 'finding' ? 'Investigate a scanner-reported accessibility issue' : 'Review an accessibility observation',
+    owner: 'Developer / accessibility QA',
+    happened: `The scanner recorded the rule “${rule}”. The available label alone does not explain the cause.${review ? ' The result is inconclusive.' : ''}`,
+    next: 'Inspect each affected location, its scanner message and linked evidence to identify the cause. Make a correction only after confirming the issue.',
+    confirm: 'Repeat the relevant rule check and manually verify the affected behavior after any change.',
+  };
+}
+
+function groupLocation(instances) {
+  const pages = new Set(instances.map(finding => finding.scope.page));
+  const states = [...new Set(instances.map(finding => finding.scope.state).filter(Boolean))];
+  return `${instances.length} affected item${instances.length === 1 ? '' : 's'} on ${pages.size} tested page${pages.size === 1 ? '' : 's'}${states.length ? ` · States: ${states.join(', ')}` : ''}. Expand the locations below for selectors and evidence.`;
+}
+
+function emptyFindingsSummary(report) {
+  const titles = { 'seo-ai-search': 'Technical SEO & Discoverability', accessibility: 'Accessibility Regression', performance: 'Performance Regression' };
+  const limited = report.coverage.filter(item => item.status === 'incomplete' || item.status === 'unavailable');
+  const headline = report.collectionStatus === 'failed'
+    ? 'Could not complete the scan — no reliable conclusion is available.'
+    : report.collectionStatus === 'partial' || limited.length
+      ? 'Scan incomplete — no confirmed issues in the available results.'
+      : 'No issues detected by the completed checks.';
+  const scope = `This report covers only ${titles[report.agentId]} checks on the requested pages and states. Zero reported issues does not mean the site is clean or that other maintenance areas were checked.`;
+  const limitations = limited.map(item => {
+    let explanation = item.reason || 'The scanner did not finish this check.';
+    if (report.agentId === 'seo-ai-search' && /rendered/i.test(item.subject) && /rendered HTML missing|snapshot size limit/i.test(item.reason || '')) {
+      explanation = 'The scanner could not capture the rendered page; rendered SEO checks were not completed.';
+    } else if (report.agentId === 'seo-ai-search' && /sitemap/i.test(item.subject) && /limit|bounded|not fetched/i.test(item.reason || '')) {
+      explanation = 'Sitemap inspection reached its limits; page membership remains unconfirmed.';
+    }
+    return { ...item, explanation };
+  });
+  return { headline, scope, limitations };
+}
+
 function renderFindings(root, report, anchors) {
   const findings = section(root, 'findings', 'Findings and observations');
   if (!report.findings.length) {
-    paragraph(findings, 'No findings or observations were recorded. Check the coverage before drawing conclusions.');
+    const summary = emptyFindingsSummary(report);
+    const empty = element('div', 'empty-findings');
+    empty.append(element('h3', '', summary.headline));
+    paragraph(empty, summary.scope);
+    for (const item of summary.limitations) {
+      const check = entry(empty, item.subject);
+      paragraph(check, `${statusText(item.status)} · ${scopeText(item.scope)}`, 'meta');
+      paragraph(check, item.explanation);
+      if (item.reason && item.reason !== item.explanation) {
+        const original = element('details', 'report-data');
+        original.append(element('summary', '', 'Recorded limitation'), element('p', '', item.reason));
+        check.append(original);
+      }
+    }
+    findings.append(empty);
+    return;
+  }
+  if (report.agentId === 'accessibility') {
+    for (const category of accessibilityGroups(report)) {
+      if (category.disposition === 'other' && !category.groups.length) continue;
+      const categoryNode = element('div', 'finding-category');
+      categoryNode.append(element('h3', '', category.title));
+      paragraph(categoryNode, category.summary);
+      findings.append(categoryNode);
+      for (const group of category.groups) {
+        const guide = accessibilityGuidance(group.rule, group.disposition);
+        const card = element('article', 'report-entry finding-group');
+        card.dataset.rule = group.rule;
+        card.dataset.disposition = group.disposition;
+        card.dataset.count = String(group.instances.length);
+        card.append(element('h4', '', `${guide.title} · ${group.instances.length} item${group.instances.length === 1 ? '' : 's'}`));
+        paragraph(card, guide.happened);
+        paragraph(card, groupLocation(group.instances), 'meta');
+        detailList(card, [['Suggested owner', guide.owner], ['Next step', guide.next], ['How to confirm', guide.confirm]]);
+        const affected = element('details', 'affected-details');
+        affected.append(element('summary', '', `Affected locations and evidence (${group.instances.length})`));
+        for (const finding of group.instances) {
+          const instance = element('div', 'affected-instance');
+          paragraph(instance, scopeText(finding.scope));
+          if (finding.disposition === 'review-needed') paragraph(instance, finding.investigate);
+          referenceLine(instance, 'Evidence', finding.evidenceIds, anchors.evidence);
+          referenceLine(instance, 'Coverage', finding.coverageIds, anchors.coverage);
+          const technical = element('details', 'report-data');
+          technical.append(element('summary', '', 'Technical details and original scanner text'));
+          detailList(technical, [['Finding ID', finding.id], ['Rule', finding.rule], ['Disposition', finding.disposition],
+            ...(finding.disposition === 'finding' ? [['Scanner severity (not business priority)', finding.severity]] : []),
+            ['Owner priority', finding.ownerPriority], ['Original title', finding.title], ['Original investigation', finding.investigate],
+            ['Original correction', finding.correct], ['Original recheck', finding.recheck]]);
+          technical.append(element('pre', 'scanner-text', finding.summary));
+          for (const id of finding.evidenceIds) {
+            const record = report.evidence.find(item => item.id === id);
+            if (record?.data) rawData(technical, 'Recorded scanner evidence (tags, target, markup and checks)', record.data);
+          }
+          instance.append(technical);
+          affected.append(instance);
+        }
+        card.append(affected);
+        categoryNode.append(card);
+      }
+    }
     return;
   }
   for (const finding of report.findings) {
@@ -335,25 +510,55 @@ function renderComparison(root, comparison) {
 }
 
 function renderAssessment(root, assessment, evidence) {
-  const panel = section(root, 'assessment', 'AI assessment and proposed actions');
+  const panel = section(root, 'assessment', 'AI interpretation');
+  paragraph(panel, 'AI prose may contain errors. The measured results above are the source of truth; verify this draft against the affected locations before acting.', 'meta');
+  const draft = element('details', 'ai-draft');
+  draft.append(element('summary', '', 'AI interpretation — unverified draft'));
+  panel.append(draft);
+  if (assessment.truncated) paragraph(draft, 'The model received a capped subset of the available evidence.', 'meta');
   if (assessment.status === 'unavailable') {
-    paragraph(panel, 'Assessment unavailable.');
-    paragraph(panel, assessment.reason);
+    paragraph(draft, 'Assessment unavailable.');
+    paragraph(draft, assessment.reason);
   } else {
-    paragraph(panel, assessment.summary);
-    if (!assessment.actions.length) paragraph(panel, 'The assessment did not propose any actions.');
+    paragraph(draft, assessment.summary);
+    if (!assessment.actions.length) paragraph(draft, 'The assessment did not propose any actions.');
   }
-  detailList(panel, [
+  detailList(draft, [
     ['Model', assessment.model], ['Input tokens', assessment.usage?.inputTokens], ['Output tokens', assessment.usage?.outputTokens],
   ]);
-  if (assessment.truncated) paragraph(panel, 'The model received a capped subset of the available evidence.', 'meta');
-  referenceLine(panel, 'Evidence sent to the model', assessment.sentEvidenceIds, evidence);
+  referenceLine(draft, 'Evidence sent to the model', assessment.sentEvidenceIds, evidence);
   for (const action of assessment.actions ?? []) {
-    const card = entry(panel, action.title);
-    paragraph(card, `Suggested priority: ${statusText(action.priority)}`, 'meta');
+    const card = entry(draft, action.title);
+    paragraph(card, `AI-suggested priority (unverified): ${statusText(action.priority)}`, 'meta');
     paragraph(card, action.rationale);
     itemList(card, action.steps, true);
     referenceLine(card, 'Supporting evidence', action.evidenceIds, evidence);
+  }
+}
+
+function renderKeyboardProbe(root, report) {
+  if (report.agentId !== 'accessibility') return;
+  const panel=section(root,'keyboard-sample','Keyboard navigation sample');
+  const stops={'step-limit':'Sample limit reached',repeat:'Focus sequence repeated','frame-boundary':'Stopped at embedded content','guard-blocked':'Stopped by the read-only guard',timeout:'Time limit reached',aborted:'Sample interrupted',error:'Sample could not finish',unavailable:'Sample unavailable'};
+  const scopes=report.measurements?.keyboardProbe?.scopes;
+  if (!Array.isArray(scopes) || !scopes.length) {paragraph(panel,'No keyboard navigation sample was recorded. Review keyboard order, visible focus and interaction behavior manually.');return;}
+  for (const scope of scopes) {
+    const card=entry(panel,`${scope.page} · ${scope.state}`);
+    const steps=Array.isArray(scope.steps) ? scope.steps : [];
+    const forward=steps.filter(step => step.key === 'Tab').length;
+    paragraph(card,`${steps.length} observed focus steps: ${forward} forward, ${steps.length-forward} backward. Status: ${scope.status} · ${stops[scope.termination] ?? scope.termination}.`);
+    paragraph(card,'We sampled keyboard focus on the initial page. Review the order and visible focus, then test controls and screen-reader behavior.');
+    paragraph(card,`Sample bounds: up to ${scope.forwardLimit} forward Tabs and ${scope.reverseLimit} backward Tabs, within 8 seconds.`);paragraph(card,scope.reason);
+    const sequence=element('ol','keyboard-sequence');
+    for(const step of steps) {
+      const focus=step.focus;
+      const item=element('li','',`${step.key === 'Shift+Tab' ? 'Backward' : 'Forward'} · ${focus?.tag ?? 'No focused element'}${focus?.labelHint ? ' · '+focus.labelHint : ''}`);
+      if(focus) rawData(item,'Technical focus details',focus);
+      sequence.append(item);
+    }
+    const order=element('details','supporting-details');order.append(element('summary','','View recorded focus order'),sequence);card.append(order);
+    const technical=element('details','supporting-details');technical.append(element('summary','','Sample scope and technical details'));
+    paragraph(technical,scope.scopeLimit);paragraph(technical,`Elapsed: ${scope.elapsedMs} ms.`);card.append(technical);
   }
 }
 
@@ -389,7 +594,10 @@ function renderMeasurements(root, measurements) {
 }
 
 function renderEvidence(root, report, anchors) {
-  const coverage = section(root, 'coverage', 'Coverage');
+  const coveragePanel = section(root, 'coverage', 'Coverage');
+  const coverage = element('details', 'supporting-details');
+  coverage.append(element('summary', '', `Recorded coverage entries (${report.coverage.length})`));
+  coveragePanel.append(coverage);
   if (!report.coverage.length) paragraph(coverage, 'No coverage entries were returned.');
   for (const item of report.coverage) {
     const card = entry(coverage, item.subject, anchors.coverage.get(item.id));
@@ -399,13 +607,17 @@ function renderEvidence(root, report, anchors) {
     detailList(card, [['Coverage ID', item.id]]);
     rawData(card, 'View coverage data', item.data);
   }
-  const evidence = section(root, 'evidence', 'Evidence and provenance');
+  const evidencePanel = section(root, 'evidence', 'Evidence and provenance');
+  const evidence = element('details', 'supporting-details');
+  evidence.append(element('summary', '', `Recorded evidence entries (${report.evidence.length})`));
+  evidencePanel.append(evidence);
   if (!report.evidence.length) paragraph(evidence, 'No evidence was recorded.');
   for (const item of report.evidence) {
     const card = entry(evidence, item.kind.replaceAll('-', ' '), anchors.evidence.get(item.id));
     card.append(badge(statusText(item.source.kind)));
-    paragraph(card, item.summary);
+    paragraph(card, item.data?.rule ? `Rule: ${item.data.rule}` : item.summary, 'meta');
     paragraph(card, scopeText(item.scope), 'meta');
+    if (item.data?.rule) { const original = element('details', 'report-data'); original.append(element('summary', '', 'Original scanner text'), element('pre', 'scanner-text', item.summary)); card.append(original); }
     detailList(card, [
       ['Evidence ID', item.id], ['Source', item.source.name], ['Source reference', item.source.reference],
       ['Observed at', item.source.observedAt], ['Evidence key', item.key],
@@ -452,7 +664,7 @@ function renderReport(report) {
   const nav = element('nav', 'report-nav');
   nav.setAttribute('aria-label', 'Report sections');
   for (const [id, text] of [
-    ['findings', 'Findings'], ['comparison', 'Comparison'], ['assessment', 'AI assessment'], ['measurements', 'Measurements'],
+    ['findings', 'Findings'], ...(report.agentId === 'accessibility' ? [['keyboard-sample','Keyboard sample']] : []), ['comparison', 'Comparison'], ['assessment', 'AI assessment'], ['measurements', 'Measurements'],
     ['coverage', 'Coverage'], ['evidence', 'Evidence'], ['diagnostics', 'Diagnostics'], ['artifacts', 'Raw artifacts'],
     ['run-configuration', 'Configuration'],
   ]) {
@@ -464,6 +676,7 @@ function renderReport(report) {
   renderFindings(root, report, anchors);
   renderComparison(root, report.comparison);
   renderAssessment(root, report.assessment, anchors.evidence);
+  renderKeyboardProbe(root, report);
   renderMeasurements(root, report.measurements);
   renderEvidence(root, report, anchors);
   renderRunDetails(root, report, anchors, runPath);
@@ -704,3 +917,4 @@ async function checkRuntime() {
 updateBaselineSelection();
 checkRuntime();
 loadSavedReport();
+

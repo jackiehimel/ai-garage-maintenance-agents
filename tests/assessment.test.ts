@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { assess } from '../src/core/assessment.js';
-import { createEvidence } from '../src/core/evidence.js';
+import { createEvidence, createFinding } from '../src/core/evidence.js';
 import { validateRequest } from '../src/core/input.js';
 import type { CollectorResult } from '../src/core/types.js';
 
@@ -31,10 +31,12 @@ test('live assessment accepts transmitted evidence and rejects invented or omitt
   const omitted = result.evidence.at(-1);
   assert.ok(included && omitted);
   let reference = included.id;
-  const requests: Array<{ evidence: Array<{ id: string }> }> = [];
+  const requests: Array<any> = [];
+  let prompt = '';
   const fetch = t.mock.method(globalThis, 'fetch', async (_url: unknown, init?: RequestInit) => {
     const body = JSON.parse(String(init?.body));
     requests.push(JSON.parse(body.messages[0].content));
+    prompt = body.system;
     return Response.json({
       id: 'msg_test', type: 'message', role: 'assistant', model: 'test-model',
       stop_reason: 'end_turn', stop_sequence: null,
@@ -63,7 +65,38 @@ test('live assessment accepts transmitted evidence and rejects invented or omitt
   assert.equal(fetch.mock.callCount(), 3);
   for (const payload of requests) {
     assert.equal(payload.evidence.length, 60);
-    assert.ok(payload.evidence.some(({ id }) => id === included.id));
-    assert.ok(!payload.evidence.some(({ id }) => id === omitted.id));
+    assert.ok(payload.evidence.some(({ id }: {id:string}) => id === included.id));
+    assert.ok(!payload.evidence.some(({ id }: {id:string}) => id === omitted.id));
   }
+  const enriched: CollectorResult = {...result,
+    evidence:result.evidence.map(e=>({...e,data:{large:'x'.repeat(1500),tags:['best-practice'],criteria:[],impact:'moderate'}})),
+    findings:Array.from({length:72},(_,index)=>createFinding({agentId:request.agentId,rule:index<10 ? 'region' : 'color-contrast',
+      scope:{page:request.targetUrl,state:index%2 ? 'menu-open' : 'initial',element:'#node-'+index},
+      title:'Measured check',summary:'Retained observation',severity:'info',disposition:index<10 ? 'finding' : 'review-needed',
+      evidenceIds:[result.evidence[index%61].id],coverageIds:[]})),
+  };
+  reference = included.id;
+  const sampled = await assess(request,enriched);
+  assert.equal(sampled.truncated,true);
+  const payload = requests.at(-1);
+  assert.equal(payload.fullReportCounts.findingInstances,72);
+  assert.deepEqual(payload.fullReportCounts.byDisposition,{finding:10,'review-needed':62});
+  assert.deepEqual(payload.fullReportCounts.byRuleDisposition.groups,[{rule:'region',disposition:'finding',count:10},{rule:'color-contrast',disposition:'review-needed',count:62}]);
+  assert.deepEqual(payload.fullReportCounts.byPageState.groups.map((x:any)=>x.count),[36,36]);
+  assert.equal(payload.truncation.findings,true);
+  assert.equal(payload.truncation.evidence,true);
+  assert.ok(payload.evidence.length<61);
+  assert.deepEqual(payload.evidence[0].tags,['best-practice']);
+  assert.equal(payload.findings[0].rule,'region');
+  assert.equal(payload.findings[0].scope.element,'#node-0');
+  assert.deepEqual(payload.findings[0].impacts,['moderate']);
+  assert.match(prompt,/Manual\/review-needed checks are unresolved checks/);
+  assert.match(prompt,/Never invent replacement colors/);
+
+  const exact = await assess(request,{...result,evidence:[{...included,data:'x'.repeat(1398)}]});
+  assert.equal(exact.truncated,false,'exactly 1400 serialized characters are complete');
+  const summaryCut = await assess(request,{...result,evidence:[{...included,summary:'x'.repeat(1201)}]});
+  assert.equal(summaryCut.truncated,true,'summary slicing is disclosed');
+
 });
+

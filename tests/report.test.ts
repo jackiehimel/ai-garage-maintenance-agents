@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import { readFileSync } from 'node:fs';
+import { runInNewContext } from 'node:vm';
 import { parse } from 'node-html-parser';
 import type { AgentReport } from '../src/core/types.js';
 import * as exporter from '../src/report.js';
@@ -104,4 +106,129 @@ test('offline navigation results give the denominator, spread and units next to 
   assert.deepEqual(row.children.map((cell) => cell.text), [
     'Largest Contentful Paint (LCP)', '2100 ms', '2000 ms', '2200 ms', '200 ms', '2 / 3',
   ]);
+});
+
+
+import { accessibilityReport } from './report-fixture.js';
+
+test('accessibility report groups repeated rules and dispositions with precise measured counts', () => {
+  const document = parse(exporter.renderReport(accessibilityReport()));
+  assert.equal(document.querySelectorAll('.finding-group').length, 6);
+  assert.equal(document.querySelectorAll('.affected-instance').length, 72);
+  assert.match(document.text, /10 flagged items across 4 checks/);
+  assert.match(document.text, /7 items tied to accessibility requirements/);
+  assert.match(document.text, /3 best-practice suggestions/);
+  assert.match(document.text, /62 inconclusive items across 2 checks/);
+  const contrast = document.querySelectorAll('.finding-group').filter(n => n.getAttribute('data-rule') === 'color-contrast');
+  assert.deepEqual(contrast.map(n => n.getAttribute('data-count')), ['6', '55']);
+  for (const instance of document.querySelectorAll('.affected-instance')) assert.ok(instance.closest('details'));
+  for (let i = 0; i < 72; i++) {
+    assert.ok(document.text.includes(`#selector-${i}`));
+    assert.ok(document.text.includes(`finding-${i}`));
+    assert.ok(document.querySelector(`a[href="#evidence-${i + 1}"]`));
+  }
+  assert.equal(document.querySelectorAll('script,img').length, 0);
+  assert.match(document.text, /inconclusive.*not confirmed errors/i);
+  assert.match(document.text, /Scanner impact.*business priority/i);
+});
+
+test('plain-language guidance handles overlap, captions and regions without claiming confirmed manual failures', () => {
+  const document = parse(exporter.renderReport(accessibilityReport()));
+  const groups = document.querySelectorAll('.finding-group');
+  const manualContrast = groups.find(n => n.getAttribute('data-rule') === 'color-contrast' && n.getAttribute('data-disposition') === 'review-needed')!;
+  assert.match(manualContrast.text, /overlap|pseudo-element/);
+  assert.match(manualContrast.text, /only if.*fails/i);
+  const captions = groups.find(n => n.getAttribute('data-rule') === 'video-caption')!;
+  assert.match(captions.text, /speech or meaningful audio/i);
+  assert.match(captions.text, /silent decorative/i);
+  const region = groups.find(n => n.getAttribute('data-rule') === 'region')!;
+  assert.match(region.text, /skip links/i);
+  for (const group of groups) for (const label of ['Suggested owner', 'Next step', 'How to confirm']) assert.ok(group.text.includes(label));
+});
+
+test('historical AI prose is preserved in a collapsed unverified draft after the measured findings', () => {
+  const document = parse(exporter.renderReport(accessibilityReport()));
+  const draft = document.querySelector('.ai-draft')!;
+  assert.ok(draft);
+  assert.equal(draft.hasAttribute('open'), false);
+  assert.match(draft.text, /AI interpretation.*unverified draft/i);
+  assert.ok(draft.text.indexOf('capped subset') < draft.text.indexOf('Historical draft'));
+  assert.match(document.text, /may contain errors.*measured results.*source of truth/i);
+  assert.match(draft.text, /seven contrast failures in the main navigation; make text darker/);
+});
+
+
+test('live and offline accessibility grouping and actionable guidance have identical semantics', () => {
+  const app = readFileSync(new URL('../../public/app.js', import.meta.url), 'utf8');
+  const start = app.indexOf('function accessibilityGroups(');
+  const end = app.indexOf('function renderFindings(', start);
+  const live = runInNewContext(`${app.slice(start, end)}; ({ accessibilityGroups, accessibilityGuidance, groupLocation })`);
+  const fixture = accessibilityReport();
+  const plain = (value: unknown) => JSON.parse(JSON.stringify(value));
+  assert.deepEqual(plain(live.accessibilityGroups(fixture)), exporter.accessibilityGroups(fixture));
+  for (const rule of ['button-name', 'color-contrast', 'video-caption', 'landmark-unique', 'region', '<img onerror=alert(1)>']) {
+    for (const disposition of ['finding', 'review-needed', 'observation'] as const) {
+      assert.deepEqual(plain(live.accessibilityGuidance(rule, disposition)), exporter.accessibilityGuidance(rule, disposition));
+    }
+  }
+  assert.equal(live.groupLocation(fixture.findings), exporter.groupLocation(fixture.findings));
+});
+
+test('zero findings in a partial SEO scan immediately explains incomplete checks without a clean-site claim', () => {
+  const partial: AgentReport = { ...report, agentId: 'seo-ai-search', findings: [], collectionStatus: 'partial', coverage: [
+    { id: 'render', scope, subject: 'rendered HTML canonical and indexing directives', status: 'incomplete', reason: 'Rendered HTML missing or exceeds the snapshot size limit <img src=x>' },
+    { id: 'sitemap', scope, subject: 'sampled sitemap membership', status: 'incomplete', reason: 'Sitemap index child sample limit reached; Sitemap request or index depth limit reached' },
+    { id: 'optional', scope, subject: 'owner-supplied Search Console evidence', status: 'not-configured', reason: 'No evidence supplied' },
+  ] };
+  const document = parse(exporter.renderReport(partial));
+  const empty = document.querySelector('.empty-findings')!;
+  assert.ok(empty);
+  assert.match(empty.text, /Scan incomplete — no confirmed issues in the available results/);
+  assert.match(empty.text, /could not capture the rendered page; rendered SEO checks were not completed/);
+  assert.match(empty.text, /Sitemap inspection reached its limits; page membership remains unconfirmed/);
+  assert.match(empty.text, /Technical SEO & Discoverability/);
+  assert.match(empty.text, /does not mean the site is clean/);
+  assert.match(empty.text, /rendered HTML canonical/);
+  assert.ok(empty.text.includes('<img src=x>'));
+  assert.doesNotMatch(empty.text, /No evidence supplied/);
+  assert.equal(document.querySelectorAll('img').length, 0);
+});
+
+test('zero findings distinguish failed and complete scans and keep live/export wording equivalent', () => {
+  const app = readFileSync(new URL('../../public/app.js', import.meta.url), 'utf8');
+  const start = app.indexOf('function emptyFindingsSummary(');
+  const end = app.indexOf('function renderFindings(', start);
+  assert.ok(start >= 0);
+  const live = runInNewContext(`${app.slice(start, end)}; emptyFindingsSummary`);
+  for (const status of ['failed', 'partial', 'complete'] as const) {
+    const value: AgentReport = { ...report, findings: [], coverage: [], collectionStatus: status };
+    const document = parse(exporter.renderReport(value));
+    const empty = document.querySelector('.empty-findings')!;
+    assert.ok(empty);
+    assert.ok(empty.text.includes(live(value).headline));
+    assert.match(empty.text, status === 'failed' ? /Could not complete the scan.*no reliable conclusion/ : status === 'partial' ? /Scan incomplete/ : /No issues detected by the completed checks/);
+    assert.match(empty.text, /does not mean the site is clean/);
+  }
+});
+
+test('accessibility HTML gives a readable escaped keyboard sample and keeps old reports honest', () => {
+  const a11y = {...report,agentId:'accessibility' as const,findings:[],measurements:{keyboardProbe:{version:1,scopes:[{
+    page:'https://example.com/',state:'initial',status:'incomplete',termination:'frame-boundary',forwardLimit:40,reverseLimit:10,elapsedMs:12,
+    scopeLimit:'Tab-only bounded sample; widget activation and screen-reader behavior require human review.',reason:'Stopped at a frame boundary.',
+    steps:[{index:1,key:'Tab',focus:{tag:'button',selector:'#unsafe',labelHint:'<img src=x onerror=alert(1)>',rect:{x:0,y:0,width:10,height:10}}},
+      {index:2,key:'Shift+Tab',focus:{tag:'a',selector:'#back',labelHint:'Back',rect:{x:0,y:0,width:10,height:10}}}],
+  }]}}};
+  const document = parse(exporter.renderReport(a11y));
+  assert.match(document.text,/Keyboard navigation sample/);
+  assert.match(document.text,/Forward.*button/);
+  assert.match(document.text,/Backward.*Back/);
+  assert.match(document.text,/Stopped at a frame boundary/);
+  assert.match(document.text,/Stopped at embedded content/);
+  assert.ok(document.querySelectorAll('details').some(item => item.querySelector('summary')?.text === 'View recorded focus order'));
+  assert.match(document.text,/We sampled keyboard focus on the initial page/);
+  assert.match(document.text,/40.*10/);
+  assert.match(document.text,/What this check covers/);
+  assert.match(document.text,/Automated accessibility check\. See detected issues/);
+  assert.equal(document.querySelectorAll('img, script').length,0);
+  assert.match(parse(exporter.renderReport({...a11y,measurements:undefined})).text,/No keyboard navigation sample was recorded/);
 });

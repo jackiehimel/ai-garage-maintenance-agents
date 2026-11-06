@@ -57,11 +57,11 @@ npm run build
 
 export BROWSER_RUNTIME=github-actions
 export MAINTENANCE_REPOSITORY=jackiehimel/ai-garage-maintenance-agents
-export MAINTENANCE_REF=main
+export MAINTENANCE_REF="${MAINTENANCE_REF:-main}"
 if [[ -z "${ANTHROPIC_API_KEY:-}" ]]; then
   printf '\nMeasured reports work without a model key. AI assessment will be shown as unavailable.\n'
 fi
-printf '\nStarting the demo with the GitHub Actions browser worker.\n'
+printf '\nStarting the demo with browser worker ref: %s\n' "$MAINTENANCE_REF"
 printf 'Keep this Terminal window open. Press Control-C to stop.\n'
 printf 'Open the local URL in Safari when the server prints that it is ready.\n\n'
 npm start

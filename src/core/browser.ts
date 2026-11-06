@@ -3,7 +3,7 @@ import { constants } from 'node:fs';
 import http from 'node:http';
 import net from 'node:net';
 import { pipeline } from 'node:stream/promises';
-import type { BrowserContext, CDPSession, Page } from 'playwright';
+import type { BrowserContext, CDPSession, Page, Request, Route } from 'playwright';
 import { parsePublicResource, parsePublicTarget } from './input.js';
 import { abortable, cappedBytes, deadlineSignal, isAllowedDocumentOrigin, pinDestination, sendPinnedRequest } from './network.js';
 import type { PinnedDestination, Resolver } from './network.js';
@@ -80,7 +80,16 @@ export interface BrowserEgressLimits { lifetimeMs: number; requests: number; con
 const EGRESS_LIMITS: BrowserEgressLimits = {
   lifetimeMs:210_000,requests:1200,connections:600,concurrent:70,connectionBytes:22_000_000,totalBytes:140_000_000,dialMs:12_000,
 };
-export interface BrowserEgressOptions { limits?: Partial<BrowserEgressLimits>; resolve?: Resolver; signal?: AbortSignal }
+export interface BrowserEgressOptions {
+  limits?: Partial<BrowserEgressLimits>;
+  resolve?: Resolver;
+  signal?: AbortSignal;
+  // Receives the identity of every request the egress proxy rejected before any
+  // response was established (resourceType 'egress'), so collectors can account
+  // for proxy-level blocks the same way as page-level guard blocks instead of
+  // treating the bare reason string as an unexplained coverage limitation.
+  recordFailure?: (failure: BrowserRequestFailure) => void;
+}
 export interface BrowserEgress {
   chromiumArgs: string[];
   proxyUrl: string;
@@ -152,6 +161,14 @@ export async function startBrowserEgress(options: BrowserEgressOptions = {}): Pr
     const message = error instanceof Error ? error.message : 'Browser egress rejected a request';
     if (reasons.size < 16) reasons.add(message.slice(0,240));
   };
+  // Retain the rejected request's identity alongside the global reason. The
+  // request never left the proxy, so method and target are the only facts known.
+  const rejected = (method: string | undefined, url: string | undefined, error: unknown) => {
+    record(error);
+    const reason = error instanceof Error ? error.message : 'Browser egress rejected a request';
+    try { options.recordFailure?.({method:method ?? 'UNKNOWN',url:url ?? '',resourceType:'egress',mainDocument:false,reason}); }
+    catch { /* Diagnostics must not interfere with rejecting the request. */ }
+  };
   requestBudget.signal.addEventListener('abort',() => record(requestBudget.signal.reason),{once:true});
   const debit = (count: number) => {
     bytes += count;
@@ -197,7 +214,8 @@ export async function startBrowserEgress(options: BrowserEgressOptions = {}): Pr
         res.writeHead(response.status,outgoing);
         await pipeline(response.body,cappedBytes(limits.connectionBytes,debit),res,{signal:requestSignal});
       } catch (error) {
-        record(error);
+        if (res.headersSent) record(error);
+        else rejected(req.method,req.url,error);
         if (!res.headersSent && !res.destroyed) { res.writeHead(403,{'content-type':'text/plain','connection':'close'}); res.end('Browser egress rejected the request'); }
         else res.destroy();
       } finally {
@@ -243,7 +261,8 @@ export async function startBrowserEgress(options: BrowserEgressOptions = {}): Pr
           pipeline(upstream,download,client,{signal}),
         ]);
       } catch (error) {
-        if (!established || (error instanceof Error && /limit|deadline/i.test(error.message))) record(error);
+        if (!established) rejected('CONNECT',req.url ? 'https://' + req.url.replace(/:443$/i,'') : undefined,error);
+        else if (error instanceof Error && /limit|deadline/i.test(error.message)) record(error);
         if (!client.destroyed && !established) client.end('HTTP/1.1 403 Forbidden\r\nConnection: close\r\nContent-Length: 0\r\n\r\n');
       } finally {
         dial.stop();
@@ -298,6 +317,46 @@ export async function startBrowserEgress(options: BrowserEgressOptions = {}): Pr
   };
 }
 
+export interface BrowserRequestFailure {
+  method: string;
+  url: string;
+  resourceType: string;
+  mainDocument: boolean;
+  reason: string;
+}
+export interface BrowserFailureDiagnostics { failures: BrowserRequestFailure[]; overflow: number }
+
+// Deliberately retain only origin/path: credentials, query values and fragments
+// are never needed to identify the request that the collector could not inspect.
+function requestIdentity(raw: string): string {
+  try {
+    const url = new URL(raw);
+    return /^https?:$/.test(url.protocol) ? (url.origin + url.pathname).slice(0,2048) : '[unavailable]';
+  } catch { return '[unavailable]'; }
+}
+export function redactBrowserFailureReason(reason: string): string {
+  return reason.replace(/https?:\/\/[^\s"'<>]+/gi,requestIdentity).slice(0,240).replaceAll('\0','\uFFFD');
+}
+export function createBrowserFailureDiagnostics(limit = 16) {
+  if (!Number.isSafeInteger(limit) || limit < 1 || limit > 100) throw new Error('Invalid browser failure diagnostic limit');
+  const failures: BrowserRequestFailure[] = [];
+  let overflow = 0;
+  return {
+    record(failure: BrowserRequestFailure) {
+      if (failures.length >= limit) { overflow = Math.min(Number.MAX_SAFE_INTEGER,overflow + 1); return; }
+      failures.push({method:failure.method.slice(0,32),url:requestIdentity(failure.url),resourceType:failure.resourceType.toLowerCase().slice(0,64),
+        mainDocument:failure.mainDocument,reason:redactBrowserFailureReason(failure.reason)});
+    },
+    snapshot:(): BrowserFailureDiagnostics => ({failures:failures.map(item => ({...item})),overflow}),
+  };
+}
+export function browserRequestFailure(request: Request, reason: string): BrowserRequestFailure {
+  let mainDocument = false;
+  try { mainDocument = request.isNavigationRequest() && !request.frame().parentFrame(); }
+  catch { /* Worker requests have no attached frame and are not main documents. */ }
+  return {method:request.method(),url:request.url(),resourceType:request.resourceType(),mainDocument,reason};
+}
+
 export interface BrowserOptions extends BrowserEgressOptions {
   executablePath?: string;
   profile: DeclaredProfile;
@@ -309,6 +368,7 @@ export interface BrowserSession {
   signal: AbortSignal;
   newPage(): Promise<Page>;
   diagnostics(): string[];
+  requestFailures(): BrowserFailureDiagnostics;
   close(): Promise<void>;
 }
 
@@ -324,7 +384,7 @@ export function manageBrowserShutdown(egress: Pick<BrowserEgress,'signal' | 'clo
   return close;
 }
 
-async function protectRedirects(context: BrowserContext,page: Page,scope: DocumentScope,signal: AbortSignal,report: (message: string) => void): Promise<void> {
+export async function protectRedirects(context: BrowserContext,page: Page,scope: DocumentScope,signal: AbortSignal,report: (message: string) => void,recordFailure: (failure: BrowserRequestFailure) => void): Promise<void> {
   const cdp: CDPSession = await context.newCDPSession(page);
   const {frameTree} = await cdp.send('Page.getFrameTree');
   const main = frameTree.frame.id;
@@ -336,7 +396,9 @@ async function protectRedirects(context: BrowserContext,page: Page,scope: Docume
         const url = parsePublicResource(event.request.url);
         scope.assert(url,event.resourceType === 'Document' && event.frameId === main);
       } catch (error) {
-        report(error instanceof Error ? error.message : 'Browser request blocked');
+        const reason = error instanceof Error ? error.message : 'Browser request blocked';
+        report(reason);
+        recordFailure({method:event.request.method,url:event.request.url,resourceType:event.resourceType,mainDocument:event.resourceType === 'Document' && event.frameId === main,reason});
         await cdp.send('Fetch.failRequest',{requestId:event.requestId,errorReason:'BlockedByClient'}).catch(() => {});
         return;
       }
@@ -344,6 +406,27 @@ async function protectRedirects(context: BrowserContext,page: Page,scope: Docume
     })();
   });
   await cdp.send('Fetch.enable',{patterns:[{urlPattern:'http://*'},{urlPattern:'https://*'}]});
+}
+
+export async function protectBrowserRoute(route: Route,allowedPages: Set<Page>,scope: DocumentScope,signal: AbortSignal,report: (message: string) => void,recordFailure: (failure: BrowserRequestFailure) => void): Promise<void> {
+  const request = route.request();
+  try {
+    signal.throwIfAborted();
+    if (!['GET','HEAD'].includes(request.method())) throw new Error('Browser method blocked');
+    const url = parsePublicResource(request.url());
+    if (request.isNavigationRequest()) {
+      const frame = request.frame();
+      if (!allowedPages.has(frame.page())) throw new Error('Unexpected browser page navigation blocked');
+      scope.assert(url,!frame.parentFrame());
+    }
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : 'Browser request blocked';
+    report(reason);
+    recordFailure(browserRequestFailure(request,reason));
+    await route.abort('blockedbyclient').catch(() => {});
+    return;
+  }
+  await route.continue().catch(() => {});
 }
 
 export async function openBrowserSession(target: string,options: BrowserOptions): Promise<BrowserSession> {
@@ -354,7 +437,11 @@ export async function openBrowserSession(target: string,options: BrowserOptions)
   const executablePath = options.executablePath ?? module.chromium.executablePath();
   try { await access(executablePath,constants.X_OK); }
   catch (error) { throw new Error('Chromium executable unavailable; install Playwright Chromium or configure a trusted executable path',{cause:error}); }
-  const egress = await startBrowserEgress(options);
+  // One bounded store accounts for guard blocks at every layer: Playwright
+  // routing, CDP interception and the loopback egress proxy, which otherwise
+  // reports only a reason string for requests it refused (e.g. request bodies).
+  const failures = createBrowserFailureDiagnostics();
+  const egress = await startBrowserEgress({...options,recordFailure:(failure) => { failures.record(failure); options.recordFailure?.(failure); }});
   let close = () => egress.close();
   try {
     const browser = await module.chromium.launch({
@@ -378,24 +465,7 @@ export async function openBrowserSession(target: string,options: BrowserOptions)
         if (opener) { report('Unexpected browser popup closed'); return page.close(); }
       }).catch(() => {});
     });
-    await context.route('**/*',async (route) => {
-      const request = route.request();
-      try {
-        egress.signal.throwIfAborted();
-        if (!['GET','HEAD'].includes(request.method())) throw new Error('Browser method blocked');
-        const url = parsePublicResource(request.url());
-        if (request.isNavigationRequest()) {
-          const frame = request.frame();
-          if (!allowedPages.has(frame.page())) throw new Error('Unexpected browser page navigation blocked');
-          scope.assert(url,!frame.parentFrame());
-        }
-      } catch (error) {
-        report(error instanceof Error ? error.message : 'Browser request blocked');
-        await route.abort('blockedbyclient').catch(() => {});
-        return;
-      }
-      await route.continue().catch(() => {});
-    });
+    await context.route('**/*',(route) => protectBrowserRoute(route,allowedPages,scope,egress.signal,report,failures.record));
     await context.routeWebSocket('**/*',(socket) => { void socket.close({code:1008,reason:'Public collection disables WebSocket'}).catch(() => {}); });
     const driverVersion = (await import('playwright/package.json',{with:{type:'json'}})).default.version;
     egress.signal.throwIfAborted();
@@ -409,7 +479,7 @@ export async function openBrowserSession(target: string,options: BrowserOptions)
         allowedPages.add(page);
         page.once('close',() => allowedPages.delete(page));
         try {
-          await protectRedirects(context,page,scope,egress.signal,report);
+          await protectRedirects(context,page,scope,egress.signal,report,failures.record);
           egress.signal.throwIfAborted();
         } catch (error) {
           await page.close().catch(() => {});
@@ -417,7 +487,8 @@ export async function openBrowserSession(target: string,options: BrowserOptions)
         }
         return page;
       },
-      diagnostics:() => [...reasons,...egress.diagnostics().reasons],
+      diagnostics:() => [...reasons,...egress.diagnostics().reasons,...(failures.snapshot().overflow ? ['Browser request failure diagnostics truncated'] : [])],
+      requestFailures:failures.snapshot,
       close,
     };
   } catch (error) {
@@ -425,3 +496,4 @@ export async function openBrowserSession(target: string,options: BrowserOptions)
     throw new Error('Chromium could not start in the protected browser environment',{cause:error});
   }
 }
+

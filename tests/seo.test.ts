@@ -1,7 +1,10 @@
 import assert from 'node:assert/strict';
 import { Readable } from 'node:stream';
 import test from 'node:test';
-import { collectSeoEvidence } from '../src/agents/seo.js';
+import { runInNewContext } from 'node:vm';
+import { parse } from 'node-html-parser';
+import { readDocument } from '../src/agents/seo-parsing.js';
+import { captureSeoDocument, collectSeoEvidence, seoGuardFailuresAccounted } from '../src/agents/seo.js';
 import { baselineIdentity, compareFindings, createBaseline } from '../src/core/baseline.js';
 import { validateRequest } from '../src/core/input.js';
 import { createPublicHttpClient } from '../src/core/network.js';
@@ -12,7 +15,7 @@ const noindex = '<meta name="robots" content="noindex, follow">';
 const template = (head = '') => '<!doctype html><html><head>' + head + '</head><body>Test</body></html>';
 const runtime = { browser: '120.0.0.0', driver: '1.63.0' };
 
-async function fixture(options: { intent?: 'indexable'|'excluded'; source?: string; render?: string|null; search?: boolean; sitemaps?: boolean; redirect?: boolean; robots?: string; sitemap?: string; headers?: Record<string,string>; provisionalBrowser?: boolean } = {}) {
+async function fixture(options: { intent?: 'indexable'|'excluded'; source?: string; render?: string|null; search?: boolean; sitemaps?: boolean; redirect?: boolean; robots?: string; sitemap?: string; headers?: Record<string,string>; provisionalBrowser?: boolean; renderFailure?: boolean; sitemapIndex?: string; snapshot?: ReturnType<typeof captureSeoDocument>; diagnostics?: string[]; requestFailures?: import('../src/core/browser.js').BrowserFailureDiagnostics } = {}) {
   const request = validateRequest({
     agentId: 'seo-ai-search', targetUrl: url, pages: [extra],
     indexIntent: options.intent ? [{page:url,intended:options.intent}] : [],
@@ -24,7 +27,7 @@ async function fixture(options: { intent?: 'indexable'|'excluded'; source?: stri
     ['/extra', template()],
     ['/landing', template()],
     ['/robots.txt', options.robots ?? (options.sitemaps ? 'Sitemap: https://example.com/index.xml\nUser-agent: *\nDisallow: /custom*\nUser-agent: Googlebot\nDisallow: /custom\nAllow: /custom?release=2$' : 'User-agent: *\nDisallow:')],
-    ['/index.xml', '<sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"><sitemap><loc>https://example.com/sitemap.xml</loc></sitemap></sitemapindex>'],
+    ['/index.xml', options.sitemapIndex ?? '<sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"><sitemap><loc>https://example.com/sitemap.xml</loc></sitemap></sitemapindex>'],
     ['/sitemap.xml', options.sitemap ?? '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"><url><loc>https://example.com/custom?release=2&amp;x=3</loc></url><url><loc>https://example.com/extra</loc></url></urlset>'],
   ]);
   const client = createPublicHttpClient({
@@ -42,10 +45,11 @@ async function fixture(options: { intent?: 'indexable'|'excluded'; source?: stri
     const result = await collectSeoEvidence(request, client, async () => ({
       ...runtime,
       capture: async (page) => {
+        if (options.renderFailure) return {error:'Final browser response unavailable',redirects:[],requestFailures:options.requestFailures};
         if (options.render === null) throw new Error('Rendered fixture unavailable');
         if (page === url && options.provisionalBrowser) return {url:'https://example.com/intermediate',status:302,redirects:[],headers:{location:'https://blocked.example/'},diagnostics:[],reason:'Navigation blocked',networkReason:'No final document',finalConfirmed:false};
         const html = page === url ? template(options.render ?? options.source) : template();
-        return {url:page,status:200,redirects:[],headers:{},html,diagnostics:[]};
+        return {url:page,status:200,redirects:[],headers:{},html:options.snapshot ? options.snapshot.html : html,reason:options.snapshot?.reason,diagnostics:options.diagnostics ?? [],requestFailures:options.requestFailures};
       },
       close: async () => {},
     }));
@@ -185,4 +189,230 @@ test('a confirmed www alias can share the exact measured canonical robots file a
       }
     } finally { client.close(); }
   }
+});
+
+
+const wideIndex = '<sitemapindex>' + ['sitemap.xml','a.xml','b.xml','c.xml','d.xml'].map(name => `<sitemap><loc>https://example.com/${name}</loc></sitemap>`).join('') + '</sitemapindex>';
+
+test('fully parsed positive membership is complete even when bounded traversal is incomplete', async () => {
+  const {result} = await fixture({sitemaps:true,sitemapIndex:wideIndex});
+  const item = result.evidence.find(e => e.kind === 'seo.sitemap-membership' && e.scope.page === extra)!;
+  const data = item.data as Record<string, unknown>;
+  assert.equal(data.coverage,'complete');
+  assert.equal(data.traversalCoverage,'incomplete');
+  assert.equal(data.coverageBasis,'fully-parsed-urlset-match');
+  assert.equal(data.sampled,true);
+  assert.match(JSON.stringify(data.reasons),/limit reached/);
+  assert.equal(result.coverage.find(c => c.subject === 'sampled sitemap membership' && c.scope.page === extra)?.status,'complete');
+  const missing = result.evidence.find(e => e.kind === 'seo.sitemap-membership' && e.scope.page === url)!;
+  assert.equal((missing.data as Record<string, unknown>).coverage,'incomplete');
+  assert.equal((missing.data as Record<string, unknown>).coverageBasis,'bounded-traversal');
+});
+
+test('partial positive urlsets and index locations cannot establish complete scoped membership', async () => {
+  for (const sitemap of ['<urlset><url><loc>https://example.com/extra</loc></url>',
+    '<urlset><url><loc>https://example.com/extra</loc></url><wrong/></urlset>',
+    '<sitemapindex><sitemap><loc>https://example.com/extra</loc></sitemap></sitemapindex>']) {
+    const {result} = await fixture({sitemaps:true,sitemapIndex:wideIndex,sitemap});
+    const data = result.evidence.find(e => e.kind === 'seo.sitemap-membership' && e.scope.page === extra)!.data as Record<string, unknown>;
+    assert.equal(data.coverage,'incomplete');
+    assert.equal(data.coverageBasis,'bounded-traversal');
+  }
+});
+
+test('retained request identities and overflow remain visible evidence and render limitations', async () => {
+  const requestFailures = {failures:[{method:'POST',url:'https://example.com/api',resourceType:'fetch',mainDocument:false,reason:'Browser method blocked'}],overflow:2};
+  const {result} = await fixture({requestFailures});
+  const http = result.evidence.find(e => e.kind === 'seo.rendered-http' && e.scope.page === url)!;
+  assert.deepEqual((http.data as Record<string,unknown>).requestFailures,requestFailures);
+  assert.equal(result.coverage.find(c => c.subject === 'rendered HTML canonical and indexing directives' && c.scope.page === url)?.status,'incomplete');
+});
+
+test('SEO observes failed and HTTP-error requests with bounded redacted identity', async () => {
+  const {observeSeoRequestFailures} = await import('../src/agents/seo.js');
+  const listeners = new Map<string,(value: unknown) => void>();
+  const notes: string[] = [];
+  const failures = observeSeoRequestFailures({on:(name: string,listener: (value: unknown) => void) => listeners.set(name,listener)} as never,text => notes.push(text));
+  const request = (type: string,main = false) => ({method:() => 'GET',url:() => 'https://example.com/asset?token=secret#secret',resourceType:() => type,isNavigationRequest:() => main,frame:() => ({parentFrame:() => null}),failure:() => ({errorText:'net::ERR_FAILED https://example.com/asset?token=secret#secret'})});
+  listeners.get('requestfailed')!(request('document',true));
+  listeners.get('response')!({request:() => request('stylesheet'),status:() => 503});
+  listeners.get('response')!({request:() => request('script'),status:() => 200});
+  for (let count = 0; count < 18; count++) listeners.get('requestfailed')!(request('fetch'));
+  const retained = failures.snapshot();
+  assert.equal(retained.failures.length,16);
+  assert.equal(retained.overflow,4);
+  assert.equal(retained.failures[0].mainDocument,true);
+  assert.equal(retained.failures[1].resourceType,'stylesheet');
+  assert.equal(retained.failures[1].reason,'returned HTTP 503');
+  assert.doesNotMatch(JSON.stringify({retained,notes}),/secret|token|#/);
+});
+
+test('failed main navigation retains request failure identities in SEO evidence', async () => {
+  const requestFailures = {failures:[{method:'GET',url:'https://other.example.com/',resourceType:'document',mainDocument:true,reason:'Browser document left the accepted origin'}],overflow:0};
+  const {result} = await fixture({renderFailure:true,requestFailures});
+  const http = result.evidence.find(e => e.kind === 'seo.rendered-http' && e.scope.page === url)!;
+  assert.deepEqual((http.data as Record<string,unknown>).requestFailures,requestFailures);
+  assert.equal(result.coverage.find(c => c.subject === 'rendered HTTP status and redirects' && c.scope.page === url)?.status,'unavailable');
+});
+
+
+test('only exact observed reporting blocks and ordinary non-content assets preserve metadata coverage', async () => {
+  const reporting = ['https://analytics.google.com/g/collect','https://stats.g.doubleclick.net/g/collect',
+    'https://www.google.com/g/collect','https://www.google.com/ccm/collect',
+    'https://ad.doubleclick.net/ccm/s/collect','https://www.google.com/rmkt/collect/123/'];
+  const failures = reporting.map(url=>({method:'POST',url,resourceType:'fetch',mainDocument:false,reason:'Browser method blocked'}));
+  failures.push({method:'GET',url:'https://ad.doubleclick.net/ccm/s/collect',resourceType:'image',mainDocument:false,reason:'failed: net::ERR_BLOCKED_BY_CLIENT.Inspector'});
+  failures.push({method:'GET',url:'https://ad.doubleclick.net/ccm/s/collect',resourceType:'image',mainDocument:false,reason:'failed: net::ERR_BLOCKED_BY_ORB'});
+  failures.push({method:'GET',url:'https://example.com/video',resourceType:'media',mainDocument:false,reason:'failed: net::ERR_ABORTED'});
+  for (const resourceType of ['image','media','font','ping']) failures.push({method:'GET',url:'https://example.com/asset',resourceType,mainDocument:false,reason:'returned HTTP 404'});
+  const {result} = await fixture({requestFailures:{failures,overflow:0},diagnostics:['Browser method blocked']});
+  for (const page of [url,extra]) {
+    assert.equal(result.coverage.find(c=>c.subject === 'rendered HTML canonical and indexing directives' && c.scope.page === page)?.status,'complete');
+    assert.equal(result.coverage.find(c=>c.subject === 'rendered JSON-LD parse and type observations' && c.scope.page === page)?.status,'complete');
+    const data = result.evidence.find(e=>e.kind === 'seo.rendered-http' && e.scope.page === page)!.data as Record<string,unknown>;
+    assert.deepEqual(data.requestFailures,{failures,overflow:0});
+    assert.ok((data.requestFailureImpact as Array<{impact:string;reason:string}>).every(f=>f.impact === 'non-content' && f.reason.length>0));
+  }
+});
+
+test('unknown, spoofed, security, unaccounted and overflow failures still limit rendered observations', async () => {
+  const base = {method:'POST',url:'https://analytics.google.com/g/collect',resourceType:'fetch',mainDocument:false,reason:'Browser method blocked'};
+  const invalid = [
+    {...base,url:'https://analytics.google.com.attacker.example/g/collect'},
+    {...base,url:'https://analytics.google.com/g/collect/extra'},
+    {...base,url:'https://analytics.google.com:443/g/collect'},
+    {...base,url:'HTTPS://analytics.google.com:443/g/collect'},
+    {...base,url:'https://user@analytics.google.com/g/collect'},
+    {...base,url:'http://analytics.google.com/g/collect'},
+    {...base,url:'https://example.com/api'},
+    {...base,resourceType:'script'}, {...base,resourceType:'stylesheet'},
+    {...base,resourceType:'document'}, {...base,resourceType:'unknown'}, {...base,mainDocument:true},
+    {...base,reason:'Private address blocked'},
+    {...base,method:'GET',resourceType:'media',reason:'Browser method blocked'},
+  ];
+  for (const requestFailures of [...invalid.map(f=>({failures:[f],overflow:0})),{failures:[base],overflow:1},{failures:[],overflow:0},undefined]) {
+    const {result} = await fixture({requestFailures,diagnostics:['Browser method blocked']});
+    assert.equal(result.coverage.find(c=>c.subject === 'rendered HTML canonical and indexing directives' && c.scope.page === url)?.status,'incomplete');
+  }
+  for (const reason of ['Page script error: failed','Browser request budget exceeded']) {
+    const {result} = await fixture({requestFailures:{failures:[base],overflow:0},diagnostics:[reason]});
+    assert.equal(result.coverage.find(c=>c.subject === 'rendered JSON-LD parse and type observations' && c.scope.page === url)?.status,'incomplete');
+  }
+});
+
+
+test('asset security and unknown errors remain limiting, including ORB outside the exact reporting image', async () => {
+  const base = {method:'GET',url:'https://ad.doubleclick.net/ccm/s/collect',resourceType:'image',mainDocument:false,reason:'failed: net::ERR_BLOCKED_BY_ORB'};
+  const failures = [
+    ...['ERR_CERT_AUTHORITY_INVALID','ERR_SSL_PROTOCOL_ERROR','ERR_UNSAFE_PORT','ERR_MADE_UP_CODE'].map(code=>({...base,reason:'failed: net::'+code})),
+    {...base,url:'https://ad.doubleclick.net.attacker.example/ccm/s/collect'},
+    {...base,url:'https://ad.doubleclick.net/ccm/s/collect/extra'},
+    {...base,resourceType:'fetch'}, {...base,resourceType:'script'}, {...base,mainDocument:true},
+    {...base,reason:'failed: net::ERR_BLOCKED_BY_ORB.Inspector'},
+  ];
+  for (const failure of failures) {
+    const {result} = await fixture({requestFailures:{failures:[failure],overflow:0}});
+    assert.equal(result.coverage.find(c=>c.subject === 'rendered HTML canonical and indexing directives' && c.scope.page === url)?.status,'incomplete');
+    const data = result.evidence.find(e=>e.kind === 'seo.rendered-http' && e.scope.page === url)!.data as Record<string,unknown>;
+    assert.deepEqual(data.requestFailures,{failures:[failure],overflow:0});
+    assert.equal((data.requestFailureImpact as Array<{impact:string}>)[0].impact,'limiting');
+  }
+});
+
+
+test('the protected Solvd trace is complete once every retained block is accounted for, at every guard layer', async () => {
+  // Request identities retained by CI run 42116455637 (run_0ec98266a344f54c736a8d81): reporting
+  // beacons blocked by routing and CDP, the hero video and a reporting pixel. Every one is non-content.
+  const beacon = (url: string,resourceType: string,reason: string) => ({method:'POST',url,resourceType,mainDocument:false,reason});
+  const inspector = 'failed: net::ERR_BLOCKED_BY_CLIENT.Inspector';
+  const failures = [
+    {method:'GET',url:'https://solvd.com/wp-content/uploads/2026/05/Homepage-hero-animation.mp4',resourceType:'media',mainDocument:false,reason:'failed: net::ERR_ABORTED'},
+    beacon('https://analytics.google.com/g/collect','fetch',inspector), beacon('https://stats.g.doubleclick.net/g/collect','ping',inspector),
+    beacon('https://www.google.com/g/collect','fetch',inspector), beacon('https://www.google.com/rmkt/collect/646651083/','fetch',inspector),
+    beacon('https://www.google.com/ccm/collect','fetch',inspector), beacon('https://ad.doubleclick.net/ccm/s/collect','fetch',inspector),
+    {method:'GET',url:'https://ad.doubleclick.net/ccm/s/collect',resourceType:'image',mainDocument:false,reason:'failed: net::ERR_BLOCKED_BY_ORB'},
+    beacon('https://analytics.google.com/g/collect','xhr','Browser method blocked'), beacon('https://stats.g.doubleclick.net/g/collect','ping','Browser method blocked'),
+    beacon('https://www.google.com/g/collect','xhr','Browser method blocked'), beacon('https://www.google.com/rmkt/collect/646651083/','xhr','Browser method blocked'),
+    beacon('https://www.google.com/ccm/collect','xhr','Browser method blocked'), beacon('https://ad.doubleclick.net/ccm/s/collect','xhr','Browser method blocked'),
+  ];
+  const complete = await fixture({requestFailures:{failures,overflow:0},diagnostics:['Browser method blocked']});
+  assert.equal(complete.result.coverage.find(c=>c.subject === 'rendered HTML canonical and indexing directives' && c.scope.page === url)?.status,'complete');
+  assert.equal(complete.result.coverage.find(c=>c.subject === 'rendered JSON-LD parse and type observations' && c.scope.page === url)?.status,'complete');
+
+  // The egress proxy also refused a request with a body. Its reason string alone, without a
+  // retained identity, is not accounted for and keeps rendered coverage incomplete.
+  const unaccounted = await fixture({requestFailures:{failures,overflow:0},diagnostics:['Browser method blocked','Browser HTTP request bodies are blocked']});
+  const unaccountedCoverage = unaccounted.result.coverage.find(c=>c.subject === 'rendered HTML canonical and indexing directives' && c.scope.page === url)!;
+  assert.equal(unaccountedCoverage.status,'incomplete');
+  assert.equal(unaccountedCoverage.reason,'Render had limited coverage: Browser HTTP request bodies are blocked');
+
+  // With the identity retained, the refusal is still a limitation (nothing establishes reporting
+  // traffic for a proxy-level refusal), but the report names the request and the exact reason.
+  // No guard reason is cleared while any retained failure remains limiting.
+  const egress = {method:'POST',url:'http://beacon.example.com/collect',resourceType:'egress',mainDocument:false,reason:'Browser HTTP request bodies are blocked'};
+  const identified = await fixture({requestFailures:{failures:[...failures,egress],overflow:0},diagnostics:['Browser method blocked','Browser HTTP request bodies are blocked']});
+  const identifiedCoverage = identified.result.coverage.find(c=>c.subject === 'rendered HTML canonical and indexing directives' && c.scope.page === url)!;
+  assert.equal(identifiedCoverage.status,'incomplete');
+  assert.equal(identifiedCoverage.reason,'Render had limited coverage: Browser method blocked; Browser HTTP request bodies are blocked; Browser requests could not be fully inspected');
+  const data = identified.result.evidence.find(e=>e.kind === 'seo.rendered-http' && e.scope.page === url)!.data as Record<string,unknown>;
+  const impacts = data.requestFailureImpact as Array<{index:number;impact:string;reason:string}>;
+  assert.ok(impacts.slice(0,failures.length).every(f=>f.impact === 'non-content'));
+  assert.deepEqual(impacts[failures.length],{index:failures.length,impact:'limiting',reason:'Egress proxy refused this request before its purpose could be established; rendered metadata coverage remains limited'});
+
+  // A proxy refusal is never reporting traffic by identity alone, even at a documented endpoint.
+  for (const spoof of [{...egress,url:'https://analytics.google.com/g/collect'},{...egress,url:'https://analytics.google.com/g/collect',reason:'Browser method blocked'}]) {
+    const {result} = await fixture({requestFailures:{failures:[...failures,spoof],overflow:0},diagnostics:['Browser method blocked','Browser HTTP request bodies are blocked']});
+    assert.equal(result.coverage.find(c=>c.subject === 'rendered JSON-LD parse and type observations' && c.scope.page === url)?.status,'incomplete');
+  }
+});
+
+test('observed xhr guard and fetch failure account for the same reporting request', () => {
+  const guard = {method:'POST',url:'https://analytics.google.com/g/collect',resourceType:'xhr',mainDocument:false,reason:'Browser method blocked'};
+  const observed = {...guard,resourceType:'fetch',reason:'failed: net::ERR_BLOCKED_BY_CLIENT.Inspector'};
+  assert.equal(seoGuardFailuresAccounted([guard],[observed]),true);
+  assert.equal(seoGuardFailuresAccounted([guard,guard],[observed]),false);
+});
+
+
+const projectedSnapshot = (source:string) => {
+  const root = parse(source);
+  const document = {documentElement:root.querySelector('html'),head:root.querySelector('head'),querySelectorAll:root.querySelectorAll.bind(root)};
+  return runInNewContext('('+captureSeoDocument.toString()+')(1000000)',{document}) as ReturnType<typeof captureSeoDocument>;
+};
+
+test('bounded rendered SEO projection ignores large bodies and hydration while preserving metadata and body JSON-LD', async () => {
+  const snapshot = projectedSnapshot('<html><head><title>Large page</title><base href="/catalog/"><meta name="robots" content="index"><meta name="description" content="A &amp; B"><link rel="canonical" href="item"><link rel="canonical" href="item">'+
+    '<script type="application/json">'+ 'x'.repeat(1100000)+'</script></head><body><div>'+ 'x'.repeat(1100000)+'</div>'+
+    '<script type="application/ld+json">{"@type":"Product"}</script><script type="application/ld+json">{"@type":"WebPage"}</script></body></html>');
+  assert.ok(snapshot.html && snapshot.html.length<1000);
+  const document = readDocument(snapshot.html,url);
+  assert.equal(document.title,'Large page');
+  assert.equal(document.description,'A & B');
+  assert.equal(document.canonical.length,2);
+  assert.equal(document.canonical[0].url,'https://example.com/catalog/item');
+  assert.equal(document.directives[0].value,'index');
+  assert.equal(document.structuredCount,2);
+  assert.deepEqual(document.jsonLd.map(block=>block.types),[['Product'],['WebPage']]);
+  const {result} = await fixture({snapshot});
+  assert.equal(result.coverage.find(c=>c.subject === 'rendered HTML canonical and indexing directives')?.status,'complete');
+  assert.equal(result.coverage.find(c=>c.subject === 'rendered JSON-LD parse and type observations')?.status,'complete');
+});
+
+test('missing or oversized relevant rendered SEO data stays incomplete and parser limits remain intact', async () => {
+  for (const source of ['', '<html><body></body></html>',
+    '<html><head><meta name="robots" content="'+ 'x'.repeat(1000000)+'"></head><body></body></html>',
+    '<html><head></head><body><script type="application/ld+json">'+ 'x'.repeat(1000000)+'</script></body></html>']) {
+    const snapshot = projectedSnapshot(source);
+    assert.equal(snapshot.html,undefined);
+    assert.match(snapshot.reason!,/missing|size limit/);
+    const {result} = await fixture({snapshot});
+    assert.equal(result.coverage.find(c=>c.subject === 'rendered HTML canonical and indexing directives')?.status,'incomplete');
+  }
+  const oversizedBlock = projectedSnapshot('<html><head></head><body><script type="application/ld+json">'+ 'x'.repeat(120001)+'</script></body></html>');
+  assert.ok(oversizedBlock.html);
+  assert.equal(readDocument(oversizedBlock.html,url).structuredIncomplete,true);
+  const duplicateBlocks = projectedSnapshot('<html><head></head><body>'+ '<script type="application/ld+json">{"@type":"Product"}</script>'.repeat(17)+'</body></html>');
+  const parsed = readDocument(duplicateBlocks.html!,url);
+  assert.equal(parsed.structuredCount,17);
+  assert.equal(parsed.structuredIncomplete,true);
 });

@@ -1,7 +1,8 @@
 import { createHash } from 'node:crypto';
 import type { IncomingHttpHeaders } from 'node:http';
-import type { Response } from 'playwright';
-import { openBrowserSession } from '../core/browser.js';
+import type { Page, Response } from 'playwright';
+import { browserRequestFailure, createBrowserFailureDiagnostics, openBrowserSession, redactBrowserFailureReason } from '../core/browser.js';
+import type { BrowserFailureDiagnostics, BrowserRequestFailure } from '../core/browser.js';
 import { canonicalJson, createEvidence, createFinding } from '../core/evidence.js';
 import { parsePublicTarget } from '../core/input.js';
 import { abortable, createPublicHttpClient, PublicHttpError } from '../core/network.js';
@@ -26,15 +27,129 @@ const isHtml = (contentType: string | undefined, text: string) => contentType
 
 interface Snapshot {
   url: string; status: number; redirects: readonly RedirectHop[]; headers: IncomingHttpHeaders;
-  html?: string; diagnostics: string[]; reason?: string; networkReason?: string; navigation?: string; finalConfirmed?: boolean;
+  html?: string; diagnostics: string[]; requestFailures?: BrowserFailureDiagnostics; reason?: string; networkReason?: string; navigation?: string; finalConfirmed?: boolean;
 }
 interface Renderer {
   browser: string; driver: string;
-  capture(url: string, observedSourceUrl?: string): Promise<Snapshot>;
+  capture(url: string, observedSourceUrl?: string): Promise<Snapshot | FailedSource>;
   close(): Promise<void>;
 }
-type FailedSource = {error: string; redirects: readonly RedirectHop[]; failedUrl?: string};
+type FailedSource = {error: string; redirects: readonly RedirectHop[]; failedUrl?: string; requestFailures?: BrowserFailureDiagnostics};
 type Source = HttpResult | FailedSource;
+
+// Global reason strings the browser guards emit once per session. Each is
+// cleared from a page's limitations only when the same reason is retained with
+// a request identity on that page and every retained failure is non-content.
+const GUARD_REASONS = new Set(['Browser method blocked','Browser HTTP request bodies are blocked']);
+
+function seoFailureImpact(failure: BrowserRequestFailure): {impact:'limiting'|'non-content';reason:string} {
+  const limiting = {impact:'limiting' as const,reason:'Unknown content dependency or security failure; rendered metadata coverage remains limited'};
+  if (failure.mainDocument) return limiting;
+  // The loopback proxy refuses a request with a body before learning its
+  // purpose; only its method and redacted target are known. Nothing establishes
+  // that it was reporting traffic, so it limits coverage with a precise reason.
+  if (failure.resourceType === 'egress') {
+    return {impact:'limiting',reason:'Egress proxy refused this request before its purpose could be established; rendered metadata coverage remains limited'};
+  }
+  const intentionalBlock = failure.reason === 'Browser method blocked' || /^failed: net::ERR_BLOCKED_BY_CLIENT(?:\.Inspector)?$/.test(failure.reason);
+  let reporting = false;
+  try {
+    const url = new URL(failure.url);
+    // Google documents analytics.google.com/g/collect and reporting destinations:
+    // https://developers.google.com/tag-platform/security/guides/csp
+    // Other exact paths below are inferences from the protected Solvd trace,
+    // not documented stable APIs. The exact GET image ORB exception also comes
+    // from that observed trace. See docs/research/seo-coverage.md.
+    const exact = url.protocol === 'https:' && !url.port && !url.username && !url.password &&
+      !/^https:\/\/[^/]*:/i.test(failure.url);
+    const postPath = (url.hostname === 'analytics.google.com' && url.pathname === '/g/collect') ||
+      (url.hostname === 'stats.g.doubleclick.net' && url.pathname === '/g/collect') ||
+      (url.hostname === 'www.google.com' && ['/g/collect','/ccm/collect'].includes(url.pathname)) ||
+      (url.hostname === 'ad.doubleclick.net' && url.pathname === '/ccm/s/collect') ||
+      (url.hostname === 'www.google.com' && /^\/rmkt\/collect\/\d+\/$/.test(url.pathname));
+    reporting = exact && (
+      (intentionalBlock && failure.method === 'POST' && ['fetch','xhr','ping'].includes(failure.resourceType) && postPath) ||
+      (failure.method === 'GET' && failure.resourceType === 'image' && url.hostname === 'ad.doubleclick.net' && url.pathname === '/ccm/s/collect' &&
+        (intentionalBlock || failure.reason === 'failed: net::ERR_BLOCKED_BY_ORB')));
+  } catch { /* Unavailable or invalid request identity cannot establish reporting traffic. */ }
+  if (reporting) return {impact:'non-content',reason:'Observed reporting endpoint was blocked; it does not establish a failed HTML metadata dependency'};
+  // Ordinary asset errors remain visible but are outside HTML metadata inspection.
+  // Unknown guard/security failures (including unaccounted method blocks) still limit it.
+  if (['image','media','font','ping'].includes(failure.resourceType) && ['GET','HEAD'].includes(failure.method) &&
+      (/^returned HTTP [45]\d\d$/.test(failure.reason) || failure.reason === 'failed: net::ERR_ABORTED')) {
+    return {impact:'non-content',reason:'Image, media, font or ping failure retained outside HTML canonical, indexing and JSON-LD inspection scope'};
+  }
+  return limiting;
+}
+
+function seoRequestLimitations(snapshot: Snapshot): string[] {
+  const failures = snapshot.requestFailures;
+  const impacts = failures?.failures.map(seoFailureImpact) ?? [];
+  const fullyAccounted = !!failures && !failures.overflow && failures.failures.length>0 && impacts.every(item=>item.impact === 'non-content');
+  // A guard reason without a retained request identity cannot be accounted for.
+  const retainedReasons = new Set(failures?.failures.map(item=>item.reason) ?? []);
+  const reasons = snapshot.diagnostics.filter(reason=>!(GUARD_REASONS.has(reason) && fullyAccounted && retainedReasons.has(reason)));
+  if (failures?.overflow) reasons.push('Browser request failure diagnostics truncated');
+  if (impacts.some(item=>item.impact === 'limiting')) reasons.push('Browser requests could not be fully inspected');
+  return [...new Set(reasons)];
+}
+
+export function seoGuardFailuresAccounted(blocks: BrowserRequestFailure[], observed: BrowserRequestFailure[]): boolean {
+  // CDP calls an XHR 'xhr' while Playwright can report the same request as 'fetch'.
+  const identity = (item: BrowserRequestFailure) => JSON.stringify([item.method,item.url,
+    ['xhr','fetch'].includes(item.resourceType) ? 'fetch/xhr' : item.resourceType,item.mainDocument]);
+  const remaining = observed.filter(item=>/^failed: net::ERR_BLOCKED_BY_CLIENT(?:\.Inspector)?$/.test(item.reason));
+  return blocks.every(block=>{
+    const index = remaining.findIndex(item=>identity(item) === identity(block));
+    if (index<0) return false;
+    remaining.splice(index,1); return true;
+  });
+}
+
+export function observeSeoRequestFailures(page: Page, note: (reason: string) => void) {
+  const failures = createBrowserFailureDiagnostics();
+  const record = (request: import('playwright').Request, reason: string) => {
+    const failure = browserRequestFailure(request,reason);
+    failures.record(failure);
+    if (seoFailureImpact(failure).impact === 'limiting') note(`${request.resourceType()} ${redactBrowserFailureReason(reason)}`);
+  };
+  page.on('requestfailed',(request) => record(request,`failed: ${request.failure()?.errorText ?? 'unknown browser error'}`));
+  page.on('response',(response) => {
+    if (response.status() >= 400) record(response.request(),`returned HTTP ${response.status()}`);
+  });
+  return failures;
+}
+
+// This function is serialized into the page; keep it independent of module state.
+export function captureSeoDocument(limit: number): {html?:string;reason?:string} {
+  if (!document.documentElement || !document.head) return {reason:'Rendered SEO document root or head is missing'};
+  const robots = new Set(['robots','googlebot','bingbot','gptbot','oai-searchbot','chatgpt-user','claudebot',
+    'claude-searchbot','perplexitybot','applebot','google-extended','ccbot','googlebot-news','googlebot-image']);
+  const escape = (value: string) => value.replaceAll('&','&amp;').replaceAll('"','&quot;').replaceAll('<','&lt;').replaceAll('>','&gt;');
+  let html = '<!doctype html><html><head>';
+  const append = (text: string) => { if (html.length + text.length > limit) return false; html += text; return true; };
+  for (const node of document.head.querySelectorAll('title,base,meta,link')) {
+    const tag = node.tagName.toLowerCase();
+    const name = node.getAttribute('name') ?? '';
+    if (tag === 'base' && !node.hasAttribute('href')) continue;
+    if (tag === 'meta' && name.toLowerCase() !== 'description' && !robots.has(name.trim().toLowerCase())) continue;
+    if (tag === 'link' && !(node.getAttribute('rel') ?? '').toLowerCase().split(/\s+/).includes('canonical')) continue;
+    const attributes = tag === 'base' ? ['href'] : tag === 'meta' ? ['name','content'] : tag === 'link' ? ['rel','href'] : [];
+    const text = '<'+tag+attributes.map(key=>node.hasAttribute(key) ? ' '+key+'="'+escape(node.getAttribute(key)!)+'"' : '').join('')+'>'+
+      (tag === 'title' ? node.innerHTML+'</title>' : '');
+    if (!append(text)) return {reason:'Rendered SEO metadata exceeds the snapshot size limit'};
+  }
+  if (!append('</head><body>')) return {reason:'Rendered SEO metadata exceeds the snapshot size limit'};
+  // JSON-LD can occur in the body; hydration data and executable scripts are irrelevant here.
+  for (const script of document.querySelectorAll('script')) {
+    if ((script.getAttribute('type') ?? '').trim().toLowerCase() !== 'application/ld+json') continue;
+    if (!append('<script type="application/ld+json">'+(script.textContent ?? '')+'</script>')) {
+      return {reason:'Rendered SEO JSON-LD exceeds the snapshot size limit'};
+    }
+  }
+  if (!append('</body></html>')) return {reason:'Rendered SEO metadata exceeds the snapshot size limit'};
+  return {html};
+}
 
 async function browserRenderer(request: ValidatedRequest, options: CollectorOptions): Promise<Renderer> {
   const browser = await openBrowserSession(request.targetUrl,{profile:request.profile,...options});
@@ -61,24 +176,18 @@ async function browserRenderer(request: ValidatedRequest, options: CollectorOpti
         }
         navigation = observedSourceUrl;
       }
+      const beforeFailures = browser.requestFailures();
       const page = await browser.newPage();
       const diagnostics = new Set<string>();
       const before = new Set(browser.diagnostics());
       const note = (text: string) => { if (diagnostics.size < 8) diagnostics.add(short(text)); };
-      page.on('requestfailed',(resource) => {
-        if (['document','script','stylesheet','xhr','fetch'].includes(resource.resourceType())) {
-          note(`${resource.resourceType()} failed: ${resource.failure()?.errorText ?? 'unknown browser error'}`);
-        }
-      });
+      const failures = observeSeoRequestFailures(page,note);
       page.on('pageerror',(error) => note(`Page script error: ${error.message}`));
       let response: Response | undefined;
       page.on('response',(item) => {
         if (item.request().isNavigationRequest()) {
           try { if (item.request().frame() === page.mainFrame()) response = item; }
           catch { /* Navigation can precede Playwright's frame attachment. */ }
-        }
-        if (item.status() >= 400 && ['script','stylesheet','xhr','fetch'].includes(item.request().resourceType())) {
-          note(`${item.request().resourceType()} returned HTTP ${item.status()}`);
         }
       });
       let html: string | undefined;
@@ -100,12 +209,9 @@ async function browserRenderer(request: ValidatedRequest, options: CollectorOpti
           finalConfirmed = true;
           const contentType = response.headers()['content-type'];
           if (success(response.status()) && (!contentType || isHtml(contentType,''))) {
-            const snapshot = await abortable(page.evaluate((limit) => {
-              const serialized = document.documentElement?.outerHTML;
-              return serialized && serialized.length <= limit ? serialized : null;
-            },RENDER_CHARS),AbortSignal.any([browser.signal,AbortSignal.timeout(4000)]));
-            if (snapshot === null) throw new Error('Rendered HTML missing or exceeds the snapshot size limit');
-            html = snapshot;
+            const snapshot = await abortable(page.evaluate(captureSeoDocument,RENDER_CHARS),AbortSignal.any([browser.signal,AbortSignal.timeout(4000)]));
+            if (!snapshot.html) throw new Error(snapshot.reason ?? 'Rendered SEO snapshot is missing');
+            html = snapshot.html;
             if (normalizedHttpUrl(page.url()) !== normalizedHttpUrl(location.href)) {
               html = undefined;
               throw new Error('Page URL changed during the HTML snapshot');
@@ -115,11 +221,38 @@ async function browserRenderer(request: ValidatedRequest, options: CollectorOpti
           reason = message(error);
           if (!finalConfirmed) networkReason = 'Final browser response could not be verified: ' + reason;
         }
-        if (!response) throw new Error(reason ?? 'No main document response was returned by Chromium');
+        const retained = browser.requestFailures();
+        // The same bounded store accounts for guard and page events; overflow is
+        // explicit even when the browser session's earlier captures filled its cap.
+        const observed = failures.snapshot();
+        for (const failure of retained.failures.slice(beforeFailures.failures.length)) failures.record(failure);
+        const requestFailures = failures.snapshot();
+        requestFailures.overflow += retained.overflow - beforeFailures.overflow;
+        if (requestFailures.overflow) diagnostics.add('Browser request failure diagnostics truncated');
+        const newGuards = retained.failures.slice(beforeFailures.failures.length);
+        for (const entry of browser.diagnostics()) {
+          if (GUARD_REASONS.has(entry)) {
+            const blocks = newGuards.filter(item=>item.reason === entry);
+            // Repeated global reason strings are not event counters. Account for
+            // every fresh guard record, even when the string existed on a prior page.
+            // Route/CDP method blocks must also match the page's own failure event;
+            // egress proxy refusals are page-invisible and carry their own identity.
+            const matched = entry === 'Browser method blocked' ? seoGuardFailuresAccounted(blocks,observed.failures) : true;
+            if (!requestFailures.overflow && !retained.overflow && blocks.length && matched &&
+                requestFailures.failures.every(item=>seoFailureImpact(item).impact === 'non-content')) continue;
+            if (blocks.length && !matched) {
+              // Guard identities are redacted; require the per-page failure event
+              // before suppressing its global reason, including repeated requests.
+              note('Browser method blocked without complete per-request diagnostics');
+            }
+            if (before.has(entry) && !blocks.length && !retained.overflow) continue;
+          }
+          note(entry);
+        }
+        if (!response) return {error:reason ?? 'No main document response was returned by Chromium',redirects:[],requestFailures};
         const url = normalizedHttpUrl(page.url()) === normalizedHttpUrl(response.url()) ? page.url() : response.url();
         const redirects = await redirectChain(response).catch((error) => { networkReason = `Browser redirect history incomplete: ${message(error)}`; return []; });
-        for (const entry of browser.diagnostics()) if (!before.has(entry)) note(entry);
-        return {url,status:response.status(),headers:response.headers(),redirects,html,reason,networkReason,navigation,finalConfirmed,diagnostics:[...diagnostics]};
+        return {url,status:response.status(),headers:response.headers(),redirects,html,reason,networkReason,navigation,finalConfirmed,diagnostics:[...diagnostics],requestFailures};
       } finally { await page.close().catch(() => {}); }
     },
   };
@@ -137,9 +270,14 @@ function networkData(source: HttpResult | Snapshot | FailedSource): JsonObject {
   const redirects = source.redirects.slice(0,20).map(({url,status,location}) => ({
     url:url.slice(0,2048),status,location:location.slice(0,2048),
   }));
-  if ('error' in source) return {error:source.error,failedUrl:source.failedUrl?.slice(0,2048) ?? null,redirects};
+  const failureData: JsonObject = 'requestFailures' in source && source.requestFailures ? {
+    requestFailures:{failures:source.requestFailures.failures.map(failure => ({...failure})),overflow:source.requestFailures.overflow},
+    requestFailureImpact:source.requestFailures.failures.map((failure,index) => ({index,...seoFailureImpact(failure)})),
+  } : {};
+  if ('error' in source) return {error:source.error,failedUrl:source.failedUrl?.slice(0,2048) ?? null,redirects,...failureData};
   const contentType = source.headers['content-type'];
   return {url:source.url,status:source.status,redirects,contentType:contentType ? short(contentType) : null,
+    ...failureData,
     ...('navigation' in source && source.navigation ? {navigation:source.navigation} : {}),
     ...('finalConfirmed' in source ? {finalConfirmed:source.finalConfirmed ?? null} : {}),
     ...(source.headers.location ? {location:source.headers.location.slice(0,2048)} : {}),
@@ -315,7 +453,8 @@ export async function collectSeoEvidence(
       try { document = readDocument(snapshot.html,snapshot.url); }
       catch (error) { parseError = `HTML parsing did not complete: ${message(error)}`; }
     }
-    const quality = missing ? snapshot.error : snapshot.reason ?? parseError ?? (snapshot.diagnostics.length ? `Render had limited coverage: ${snapshot.diagnostics.join('; ')}` : undefined);
+    const limitations = missing ? [] : seoRequestLimitations(snapshot);
+    const quality = missing ? snapshot.error : snapshot.reason ?? parseError ?? (limitations.length ? `Render had limited coverage: ${limitations.join('; ')}` : undefined);
     if (quality && kind === 'rendered') note(quality);
     const metadataCoverage = addCoverage(scope,`${kind} HTML canonical and indexing directives`,!document ? (missing ? 'unavailable' : 'incomplete') :
       quality || document.incomplete ? 'incomplete' : 'complete',quality ?? (!document ? 'No HTML snapshot was available' : document.incomplete ? 'Document metadata exceeded parse limits' : undefined));
@@ -479,16 +618,18 @@ export async function collectSeoEvidence(
     const sitemapReasons = [...new Set(robotSites.flatMap(item => item.sitemapReasons))];
     const sitemapDocuments = [...new Set(robotSites.flatMap(item => item.maps))];
     const sitemapStatus = sitemapReasons.length ? (sitemapDocuments.length && sitemapDocuments.every(x => 'error' in x.result) ? 'unavailable' : 'incomplete') : 'complete';
-    const sitemapCoverage = addCoverage(scope,'sampled sitemap membership',sitemapStatus,sitemapReasons.join('; ') || undefined);
     const lookup = new Set([page.url,source.url,render.url].filter((url): url is string => Boolean(url)).map(url => normalizedHttpUrl(url)).filter((url): url is string => Boolean(url)));
     const listedUrls = [...lookup].filter(url => robotSites.some(item => item.locations.has(url)));
+    const positiveComplete = sitemapDocuments.some(({result,parsed,reason}) => !('error' in result) && result.status === 200 && !reason && !parsed?.reason && parsed?.root === 'urlset' && parsed.locations.some(url => lookup.has(url)));
+    const coverageBasis = positiveComplete ? 'fully-parsed-urlset-match' : 'bounded-traversal';
+    const sitemapCoverage = addCoverage(scope,'sampled sitemap membership',positiveComplete ? 'complete' : sitemapStatus,positiveComplete ? undefined : sitemapReasons.join('; ') || undefined,{traversalCoverage:sitemapStatus,coverageBasis});
     addEvidence(scope,'seo.sitemap-membership','DNS-pinned public HTTP',listedUrls.length ? 'Page URL appears in the sampled sitemap data' : 'Page URL was not seen in the sampled sitemap data',{
       listed:listedUrls.length > 0,listedUrls,checkedUrls:[...lookup],sampled:true,distinctLocations:new Set(robotSites.flatMap(item => [...item.locations])).size,
       reasons:sitemapReasons,documents:sitemapDocuments.map(({requested,result,parsed,reason}) => ({
         requested,...networkData(result),root:parsed?.root ?? null,locations:parsed?.locationCount ?? null,
         sample:parsed?.locations.slice(0,6) ?? [],reason:reason ?? null,
       })),
-      coverage:sitemapCoverage.status,
+      coverage:sitemapCoverage.status,traversalCoverage:sitemapStatus,coverageBasis,
     });
 
     const documents = [source,render].filter(x => x.document);
@@ -567,3 +708,4 @@ export async function collectSeo(request: ValidatedRequest, options: CollectorOp
   try { return await collectSeoEvidence(request,client,() => browserRenderer(request,options)); }
   finally { client.close(); }
 }
+

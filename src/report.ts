@@ -7,7 +7,7 @@ const names: Record<AgentId, string> = {
 };
 const limits: Record<AgentId, string> = {
   'seo-ai-search': 'Checks on the tested pages do not establish actual indexing, rankings, traffic, or AI visibility.',
-  accessibility: 'Automated and scripted checks do not establish WCAG conformance. Review the coverage entries for outstanding human evaluation.',
+  accessibility: 'Automated accessibility check. See detected issues, recommended actions and checks that need human review.',
   performance: 'Navigation lab measurements describe this test profile, not real-user experience. Total Blocking Time (TBT) does not measure Interaction to Next Paint (INP).',
 };
 
@@ -49,6 +49,97 @@ function referenceLine(title: string, ids: string[], anchors: Map<string, string
   }).join(', ')}</p>`;
 }
 
+export function accessibilityGroups(report: AgentReport) {
+  const evidence = new Map(report.evidence.map(item => [item.id, item]));
+  const grouped = new Map<string, { rule: string; disposition: Finding['disposition']; instances: Finding[] }>();
+  for (const finding of report.findings) {
+    const key = `${finding.disposition}:${finding.rule}`;
+    if (!grouped.has(key)) grouped.set(key, { rule: finding.rule, disposition: finding.disposition, instances: [] });
+    grouped.get(key)!.instances.push(finding);
+  }
+  const categories = [
+    { disposition: 'finding', title: 'Automated checks found issues' },
+    { disposition: 'review-needed', title: 'Human checks still needed' },
+    { disposition: 'other', title: 'Other observations' },
+  ];
+  return categories.map(category => {
+    const groups = [...grouped.values()].filter(group => category.disposition === 'other'
+      ? !['finding', 'review-needed'].includes(group.disposition) : group.disposition === category.disposition);
+    const instances = groups.flatMap(group => group.instances);
+    const classify = (finding: Finding) => {
+      const records = finding.evidenceIds.flatMap(id => { const data = asObject(evidence.get(id)?.data); return data ? [data] : []; });
+      if (records.some(data => (Array.isArray(data.tags) && data.tags.some(tag => typeof tag === 'string' && /^wcag/i.test(tag))) || (Array.isArray(data.criteria) && data.criteria.length))) return 'wcag';
+      if (records.some(data => Array.isArray(data.tags) && data.tags.includes('best-practice'))) return 'best-practice';
+      return 'unspecified';
+    };
+    const wcag = instances.filter(finding => classify(finding) === 'wcag').length;
+    const bestPractice = instances.filter(finding => classify(finding) === 'best-practice').length;
+    let summary = `${instances.length} observations across ${groups.length} rules.`;
+    if (category.disposition === 'finding') summary = `${instances.length} flagged items across ${groups.length} checks: ${wcag} items tied to accessibility requirements; ${bestPractice} best-practice suggestions.${instances.length > wcag + bestPractice ? ` ${instances.length - wcag - bestPractice} items have no recorded accessibility-requirement or best-practice tag.` : ''} Scanner impact is a tool rating, not business priority. These results do not establish WCAG conformance.`;
+    if (category.disposition === 'review-needed') summary = `${instances.length} inconclusive items across ${groups.length} checks. These are not confirmed errors. A person must check the rendered page before deciding whether a change is needed.`;
+    return { ...category, groups, summary };
+  });
+}
+
+export function accessibilityGuidance(rule: string, disposition: Finding['disposition']) {
+  const review = disposition === 'review-needed';
+  const guidance: Record<string, { title: string; owner: string; happened: string; next: string; confirm: string }> = {
+    'button-name': {
+      title: 'Give buttons a name people can hear', owner: 'Developer',
+      happened: 'The scanner found a button without a descriptive accessible name. People using a screen reader may not know what it does.',
+      next: 'Give the icon-only control a concise, descriptive accessible name that explains its action.',
+      confirm: 'Use the keyboard to reach the control and verify its name and operation with a screen reader; repeat the scan.',
+    },
+    'color-contrast': review ? {
+      title: 'Check text contrast on the displayed background', owner: 'Designer / QA',
+      happened: 'The scanner could not determine contrast. Inspect each recorded reason, including overlap, pseudo-elements, images, gradients or an unknown background where reported.',
+      next: 'Measure the actual displayed foreground and background in the affected state. Change colors only if the contrast fails the threshold for that text size.',
+      confirm: 'Record the measured ratio and applicable text-size threshold, then check the affected states again.',
+    } : {
+      title: 'Improve text contrast where the scanner found a failure', owner: 'Designer / developer',
+      happened: 'The scanner measured text contrast below its applicable threshold. The text may be difficult to read.',
+      next: 'Measure the displayed foreground and background, then adjust either color to meet the applicable text-size threshold. Choose the direction of the change from the measured colors.',
+      confirm: 'Verify the resulting contrast ratio for the text size in each affected state and repeat the scan.',
+    },
+    'video-caption': {
+      title: 'Check whether videos need captions', owner: 'Content owner',
+      happened: 'The scanner could not determine whether these videos require captions.',
+      next: 'Check whether each video contains speech or meaningful audio. Provide synchronized captions if required; do not mark silent decorative videos as missing captions.',
+      confirm: 'Review caption accuracy, completeness and synchronization with meaningful audio; track presence alone cannot establish a pass or failure.',
+    },
+    'landmark-unique': {
+      title: 'Make navigation areas easy to distinguish', owner: 'Developer',
+      happened: 'The scanner found page landmarks that may be difficult to distinguish in assistive technology. This is a best-practice suggestion when tagged as such.',
+      next: 'Review the purpose of each navigation area and give distinct navigation areas meaningful accessible labels.',
+      confirm: 'Inspect the landmark list with a screen reader and verify that people can distinguish the navigation areas.',
+    },
+    region: {
+      title: 'Review how content belongs to page sections', owner: 'Developer',
+      happened: 'The scanner found content outside recognized page landmarks. Check its purpose before changing the page structure.',
+      next: 'Check that meaningful content belongs to an appropriate page section. Review skip links as a special case; do not automatically wrap every flagged element.',
+      confirm: 'Review the page sections and skip-link behavior with keyboard and screen-reader navigation; repeat the scan.',
+    },
+  };
+  const known = Object.hasOwn(guidance, rule) ? guidance[rule] : null;
+  if (known) return review && !['color-contrast', 'video-caption'].includes(rule) ? {
+    ...known, happened: 'The scanner could not reach a conclusion for this rule. This instance needs a human check; it is not a confirmed error.',
+    next: `Inspect the affected instance and rule evidence before making changes. If a barrier is confirmed: ${known.next}`,
+  } : known;
+  return {
+    title: review ? 'Check an unresolved accessibility result' : disposition === 'finding' ? 'Investigate a scanner-reported accessibility issue' : 'Review an accessibility observation',
+    owner: 'Developer / accessibility QA',
+    happened: `The scanner recorded the rule “${rule}”. The available label alone does not explain the cause.${review ? ' The result is inconclusive.' : ''}`,
+    next: 'Inspect each affected location, its scanner message and linked evidence to identify the cause. Make a correction only after confirming the issue.',
+    confirm: 'Repeat the relevant rule check and manually verify the affected behavior after any change.',
+  };
+}
+
+export function groupLocation(instances: Finding[]) {
+  const pages = new Set(instances.map(finding => finding.scope.page));
+  const states = [...new Set(instances.map(finding => finding.scope.state).filter(Boolean))];
+  return `${instances.length} affected item${instances.length === 1 ? '' : 's'} on ${pages.size} tested page${pages.size === 1 ? '' : 's'}${states.length ? ` · States: ${states.join(', ')}` : ''}. Expand the locations below for selectors and evidence.`;
+}
+
 function renderFinding(finding: Finding, evidence: Map<string, string>, coverage: Map<string, string>) {
   return `<article><h3>${esc(finding.title)}</h3>
     <p class="meta">${esc(finding.severity)} · ${esc(finding.disposition)} · ${esc(finding.rule)}</p>
@@ -56,6 +147,60 @@ function renderFinding(finding: Finding, evidence: Map<string, string>, coverage
     <dl>${label('Finding ID', finding.id)}${label('Owner priority', finding.ownerPriority)}
       ${label('Investigate', finding.investigate)}${label('Proposed correction', finding.correct)}${label('Recheck', finding.recheck)}</dl>
     ${referenceLine('Evidence', finding.evidenceIds, evidence)}${referenceLine('Coverage', finding.coverageIds, coverage)}</article>`;
+}
+
+function renderAccessibilityFindings(report: AgentReport, evidence: Map<string, string>, coverage: Map<string, string>) {
+  return accessibilityGroups(report).filter(category => category.disposition !== 'other' || category.groups.length).map(category => `<div class="finding-category"><h3>${esc(category.title)}</h3>
+    ${paragraph(category.summary)}${category.groups.map(group => {
+      const guide = accessibilityGuidance(group.rule, group.disposition);
+      return `<article class="finding-group" data-rule="${esc(group.rule)}" data-disposition="${esc(group.disposition)}" data-count="${group.instances.length}">
+        <h4>${esc(guide.title)} · ${group.instances.length} item${group.instances.length === 1 ? '' : 's'}</h4>
+        ${paragraph(guide.happened)}<p class="meta">${esc(groupLocation(group.instances))}</p>
+        <dl>${label('Suggested owner', guide.owner)}${label('Next step', guide.next)}${label('How to confirm', guide.confirm)}</dl>
+        <details class="affected-details"><summary>Affected locations and evidence (${group.instances.length})</summary>
+        ${group.instances.map(finding => `<div class="affected-instance">${paragraph(scopeLine(finding.scope))}${finding.disposition === 'review-needed' ? paragraph(finding.investigate) : ''}
+          ${referenceLine('Evidence', finding.evidenceIds, evidence)}${referenceLine('Coverage', finding.coverageIds, coverage)}
+          <details><summary>Technical details and original scanner text</summary><dl>
+            ${label('Finding ID', finding.id)}${label('Rule', finding.rule)}${label('Disposition', finding.disposition)}
+            ${finding.disposition === 'finding' ? label('Scanner severity (not business priority)', finding.severity) : ''}
+            ${label('Owner priority', finding.ownerPriority)}${label('Original title', finding.title)}
+            ${label('Original investigation', finding.investigate)}${label('Original correction', finding.correct)}${label('Original recheck', finding.recheck)}
+          </dl><pre class="scanner-text">${esc(finding.summary)}</pre>
+          ${finding.evidenceIds.map(id => {
+            const record = report.evidence.find(item => item.id === id);
+            return record?.data ? `<details><summary>Recorded scanner evidence (tags, target, markup and checks)</summary>${json(record.data)}</details>` : '';
+          }).join('')}</details></div>`).join('')}</details></article>`;
+    }).join('')}</div>`).join('');
+}
+
+export function emptyFindingsSummary(report: AgentReport) {
+  const titles = { 'seo-ai-search': 'Technical SEO & Discoverability', accessibility: 'Accessibility Regression', performance: 'Performance Regression' };
+  const limited = report.coverage.filter(item => item.status === 'incomplete' || item.status === 'unavailable');
+  const headline = report.collectionStatus === 'failed'
+    ? 'Could not complete the scan — no reliable conclusion is available.'
+    : report.collectionStatus === 'partial' || limited.length
+      ? 'Scan incomplete — no confirmed issues in the available results.'
+      : 'No issues detected by the completed checks.';
+  const scope = `This report covers only ${titles[report.agentId]} checks on the requested pages and states. Zero reported issues does not mean the site is clean or that other maintenance areas were checked.`;
+  const limitations = limited.map(item => {
+    let explanation = item.reason || 'The scanner did not finish this check.';
+    if (report.agentId === 'seo-ai-search' && /rendered/i.test(item.subject) && /rendered HTML missing|snapshot size limit/i.test(item.reason || '')) {
+      explanation = 'The scanner could not capture the rendered page; rendered SEO checks were not completed.';
+    } else if (report.agentId === 'seo-ai-search' && /sitemap/i.test(item.subject) && /limit|bounded|not fetched/i.test(item.reason || '')) {
+      explanation = 'Sitemap inspection reached its limits; page membership remains unconfirmed.';
+    }
+    return { ...item, explanation };
+  });
+  return { headline, scope, limitations };
+}
+
+function renderEmptyFindings(report: AgentReport) {
+  const summary = emptyFindingsSummary(report);
+  return `<div class="empty-findings"><h3>${esc(summary.headline)}</h3>${paragraph(summary.scope)}
+    ${summary.limitations.map(item => `<article><h4>${esc(item.subject)}</h4>
+      <p class="meta">${esc(item.status)} · ${esc(scopeLine(item.scope))}</p>${paragraph(item.explanation)}
+      ${item.reason && item.reason !== item.explanation ? `<details><summary>Recorded limitation</summary>${paragraph(item.reason)}</details>` : ''}
+    </article>`).join('')}</div>`;
 }
 
 function renderComparison(report: AgentReport) {
@@ -85,26 +230,24 @@ function renderComparison(report: AgentReport) {
 
 function renderAssessment(report: AgentReport, evidence: Map<string, string>) {
   const result = report.assessment;
-  const name = 'AI assessment and proposed actions';
   const disclosure = result.truncated ? paragraph('The model received a capped subset of the available evidence.') : '';
-  if (result.status === 'unavailable') {
-    return section(name, `${paragraph('Assessment unavailable.')}${paragraph(result.reason)}
-      <dl>${label('Model', result.model)}</dl>${disclosure}
-      ${referenceLine('Evidence sent', result.sentEvidenceIds ?? [], evidence)}`);
-  }
-  return section(name, `${paragraph(result.summary)}
-    <dl>${label('Model', result.model)}${label('Input tokens', result.usage?.inputTokens)}${label('Output tokens', result.usage?.outputTokens)}</dl>
-    ${disclosure}${referenceLine('Evidence sent', result.sentEvidenceIds, evidence)}
-    ${result.actions.map((action) => `<article><h3>${esc(action.title)}</h3>
-      <p class="meta">Suggested priority: ${esc(action.priority)}</p>${paragraph(action.rationale)}${list(action.steps, true)}
-      ${referenceLine('Supporting evidence', action.evidenceIds, evidence)}</article>`).join('') || paragraph('The assessment did not propose any actions.')}`);
+  const warning = paragraph('AI prose may contain errors. The measured results above are the source of truth; verify this draft against the affected locations before acting.');
+  const draft = result.status === 'unavailable' ? `${paragraph('Assessment unavailable.')}${paragraph(result.reason)}
+      <dl>${label('Model', result.model)}</dl>${referenceLine('Evidence sent', result.sentEvidenceIds ?? [], evidence)}`
+    : `${paragraph(result.summary)}
+      <dl>${label('Model', result.model)}${label('Input tokens', result.usage?.inputTokens)}${label('Output tokens', result.usage?.outputTokens)}</dl>
+      ${referenceLine('Evidence sent', result.sentEvidenceIds, evidence)}
+      ${result.actions.map(action => `<article><h3>${esc(action.title)}</h3>
+        <p class="meta">AI-suggested priority (unverified): ${esc(action.priority)}</p>${paragraph(action.rationale)}${list(action.steps, true)}
+        ${referenceLine('Supporting evidence', action.evidenceIds, evidence)}</article>`).join('') || paragraph('The assessment did not propose any actions.')}`;
+  return section('AI interpretation', `${warning}<details class="ai-draft"><summary>AI interpretation — unverified draft</summary>${disclosure}${draft}</details>`);
 }
 
 function renderMeasurements(measurements: JsonObject | undefined) {
   const title = 'Measurements';
   if (!measurements) return section(title, paragraph('No structured measurements were returned.'));
   const pages = asObject(measurements.navigation)?.pages;
-  if (!Array.isArray(pages) || !pages.length) return section(title, json(measurements));
+  if (!Array.isArray(pages) || !pages.length) return section(title, `<details><summary>Complete measurement data</summary>${json(measurements)}</details>`);
   const distributions = pages.flatMap((pageValue) => {
     const page = asObject(pageValue);
     if (!page) return [];
@@ -126,13 +269,27 @@ function renderMeasurements(measurements: JsonObject | undefined) {
   return section(title, distributions.join('') + `<details><summary>Complete measurement data</summary>${json(measurements)}</details>`);
 }
 
+function renderKeyboardProbe(report:AgentReport):string {
+  const probe=asObject(report.measurements?.keyboardProbe);
+  const scopes=Array.isArray(probe?.scopes) ? probe.scopes.map(asObject).filter((item):item is JsonObject => !!item) : [];
+  const stops:Record<string,string>={'step-limit':'Sample limit reached',repeat:'Focus sequence repeated','frame-boundary':'Stopped at embedded content','guard-blocked':'Stopped by the read-only guard',timeout:'Time limit reached',aborted:'Sample interrupted',error:'Sample could not finish',unavailable:'Sample unavailable'};
+  return section('Keyboard navigation sample',!scopes.length ? paragraph('No keyboard navigation sample was recorded. Review keyboard order, visible focus and interaction behavior manually.') : scopes.map(scope => {
+    const steps=Array.isArray(scope.steps) ? scope.steps.map(asObject).filter((item):item is JsonObject => !!item) : [];
+    const forward=steps.filter(step => step.key === 'Tab').length;
+    return `<article><h3>${esc(scope.page)} · ${esc(scope.state)}</h3><p>${steps.length} observed focus steps: ${forward} forward, ${steps.length-forward} backward. Status: ${esc(scope.status)} · ${esc(stops[String(scope.termination)] ?? scope.termination)}.</p>
+      <p>We sampled keyboard focus on the initial page. Review the order and visible focus, then test controls and screen-reader behavior.</p>
+      <p>Sample bounds: up to ${esc(scope.forwardLimit)} forward Tabs and ${esc(scope.reverseLimit)} backward Tabs, within 8 seconds.</p>${paragraph(scope.reason)}
+      <details><summary>View recorded focus order</summary><ol class="keyboard-sequence">${steps.map(step => {const focus=asObject(step.focus);return `<li>${esc(step.key === 'Shift+Tab' ? 'Backward' : 'Forward')} · ${esc(focus?.tag ?? 'No focused element')}${focus?.labelHint ? ' · '+esc(focus.labelHint) : ''}${focus ? `<details><summary>Technical focus details</summary>${json(focus)}</details>` : ''}</li>`;}).join('')}</ol></details><details><summary>Sample scope and technical details</summary>${paragraph(scope.scopeLimit)}${paragraph('Elapsed: '+scope.elapsedMs+' ms.')}</details></article>`;
+  }).join(''));
+}
+
 export function renderReport(report: AgentReport): string {
   const evidence = new Map(report.evidence.map((item, index) => [item.id, `evidence-${index + 1}`]));
   const coverage = new Map(report.coverage.map((item, index) => [item.id, `coverage-${index + 1}`]));
   const artifacts = new Map(report.artifacts.map((item, index) => [item.id, `artifact-${index + 1}`]));
   const coverageCount = report.coverage.filter((item) => item.status === 'complete').length;
   let cards:Array<[string,string|number]>=[['Completed checks',coverageCount],['Limited checks',report.coverage.filter(c=>c.status==='incomplete'||c.status==='unavailable').length],['Findings to review',report.findings.length]];
-  if(report.agentId==='accessibility')cards=[['Automated findings',report.findings.filter(f=>f.disposition==='finding').length],['Manual review items',report.findings.filter(f=>f.disposition==='review-needed').length],['Completed checks',coverageCount]];
+  if(report.agentId==='accessibility')cards=[['Flagged items',report.findings.filter(f=>f.disposition==='finding').length],['Human checks needed',report.findings.filter(f=>f.disposition==='review-needed').length],['Completed checks',coverageCount]];
   const pages=asObject(report.measurements?.navigation)?.pages;
   if(report.agentId==='performance'&&Array.isArray(pages)&&pages[0]){
     const page=asObject(pages[0]);const metrics=asObject(page?.metrics),score=asObject(metrics?.['performance-score']),lcp=asObject(metrics?.['largest-contentful-paint']);
@@ -146,7 +303,7 @@ export function renderReport(report: AgentReport): string {
 <style>
 :root{color-scheme:light;--paper:#faf8f4;--card:#fffefb;--ink:#22261f;--muted:#4d5245;--accent:#1f5c3f;--forest:#143d2a;--soft:#e7f0ea;--rule:#dedfd3}
 *{box-sizing:border-box}body{margin:0;background:var(--paper);color:var(--ink);font:16px/1.55 system-ui,sans-serif;overflow-wrap:anywhere}main,header>div{width:min(960px,calc(100% - 36px));margin:auto}header{padding:32px 0;background:var(--forest);color:var(--paper)}h1{font-size:clamp(1.75rem,5vw,2.65rem);line-height:1.15;margin:.3em 0 .1em}h2,h3{line-height:1.2;margin:.1em 0 .5em}h2{font-size:1.5rem}h3{font-size:1.09rem}p{margin:.65em 0}main{padding:26px 0 56px}section{margin:0 0 18px;padding:clamp(16px,4vw,28px);background:var(--card);border:1px solid var(--rule);border-radius:14px}article{padding:16px 0;border-top:1px solid var(--rule);scroll-margin-top:12px}article:last-child{padding-bottom:0}article:target{outline:2px solid var(--accent);outline-offset:4px}dl{display:grid;grid-template-columns:fit-content(38%) minmax(0,1fr);gap:5px 12px;margin:12px 0}dl:empty{display:none}dt{font-weight:650}dd{margin:0}pre{padding:12px;background:var(--soft);white-space:pre-wrap;overflow-wrap:anywhere;border-radius:8px}pre,code{font-size:.86em}small,.meta,.references{color:var(--muted);font-size:.9em}.eyebrow{font-size:.76rem;letter-spacing:.13em;text-transform:uppercase;font-weight:700}.table{overflow:auto}table{border-collapse:collapse;width:100%;font-size:.91em;text-align:left}caption{text-align:left;font-weight:700;margin:0 0 8px}td,th{padding:8px;vertical-align:top;border-bottom:1px solid var(--rule)}a{color:var(--accent);text-underline-offset:3px}a:focus-visible{outline:2px solid var(--accent);outline-offset:3px}@media print{header{background:none;color:var(--ink)}main,header>div{width:100%}section{border-radius:0;background:none}article{break-inside:avoid}}
-.highlights{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin:22px 0}.highlight{padding:16px 12px;background:#ffffff16;border:1px solid #ffffff33;border-radius:10px}.highlight strong{display:block;font-size:clamp(1.2rem,3vw,2rem);line-height:1.2}.highlight span{display:block;margin-top:8px;font-size:.78rem;color:#d1e5d6}summary{cursor:pointer}
+.highlights{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin:22px 0}.highlight{padding:16px 12px;background:#ffffff16;border:1px solid #ffffff33;border-radius:10px}.highlight strong{display:block;font-size:clamp(1.2rem,3vw,2rem);line-height:1.2}.highlight span{display:block;margin-top:8px;font-size:.78rem;color:#d1e5d6}summary{cursor:pointer}.finding-category{margin-top:24px}.finding-category>p,.finding-group>p,.finding-group dl{max-width:78ch}.finding-group{padding:20px 0}h4{font-size:1.08rem;margin:.2em 0}.affected-details>summary,.ai-draft>summary{padding:10px 0;color:var(--accent);font-weight:650}.affected-instance{padding:14px;margin-top:12px;border:1px solid var(--rule);border-radius:8px;background:var(--paper)}@media(max-width:540px){.finding-group dl{grid-template-columns:minmax(0,1fr)}.finding-group dd{margin-bottom:10px}}
 @media(max-width:480px){.highlights{grid-template-columns:1fr;gap:7px}.highlight{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:12px}.highlight strong{font-size:1.5rem;white-space:nowrap}.highlight span{margin:0;text-align:right}}
 </style></head><body>
 <header><div><p class="eyebrow">Solvd · Website Maintenance</p><h1>${esc(names[report.agentId])}</h1><p>${esc(report.testedUrl)}</p>
@@ -160,27 +317,28 @@ ${section('Run overview', `<details><summary>Run details and coverage</summary><
   ${label('Coverage', `${coverageCount} of ${report.coverage.length} recorded coverage entries marked complete`)}
   ${label('Retention', report.retention.status)}${label('Retention details', report.retention.reason)}
   ${label('Baseline export', report.baseline ? 'Available in the run’s JSON exports.' : report.baselineUnavailableReason)}
-  </dl></details>${paragraph(limits[report.agentId])}`)}
-${section('Findings and observations', report.findings.map((item) => renderFinding(item, evidence, coverage)).join('')
-  || paragraph('No findings or observations were recorded. Check the coverage before drawing conclusions.'))}
+  </dl></details>${paragraph(limits[report.agentId])}${report.agentId === 'accessibility' ? '<details><summary>What this check covers</summary><p>Automated and scripted checks do not establish WCAG conformance. The bounded keyboard sample does not check every interactive element, widget operation, other states or screen-reader behavior. Review coverage for outstanding human evaluation.</p></details>' : ''}`)}
+${section('Findings and observations', !report.findings.length ? renderEmptyFindings(report) : report.agentId === 'accessibility' ? renderAccessibilityFindings(report, evidence, coverage) : report.findings.map((item) => renderFinding(item, evidence, coverage)).join(''))}
+${report.agentId === 'accessibility' ? renderKeyboardProbe(report) : ''}
 ${renderComparison(report)}
 ${renderAssessment(report, evidence)}
 ${renderMeasurements(report.measurements)}
-${section('Coverage', report.coverage.map((item) => `<article id="${coverage.get(item.id)}"><h3>${esc(item.subject)}</h3>
+${section('Coverage', `<details><summary>Recorded coverage entries (${report.coverage.length})</summary>` + report.coverage.map((item) => `<article id="${coverage.get(item.id)}"><h3>${esc(item.subject)}</h3>
   <p class="meta">${esc(item.status)} · ${esc(item.id)} · ${esc(scopeLine(item.scope))}</p>
-  ${paragraph(item.reason)}${json(item.data)}</article>`).join('') || paragraph('No coverage entries were returned.'))}
-${section('Evidence and provenance', report.evidence.map((item) => `<article id="${evidence.get(item.id)}"><h3>${esc(item.kind)}</h3>
-  ${paragraph(item.summary)}<p class="meta">${esc(scopeLine(item.scope))}</p>
+  ${paragraph(item.reason)}${item.data === undefined ? '' : `<details><summary>Coverage data</summary>${json(item.data)}</details>`}</article>`).join('') + '</details>')}
+${section('Evidence and provenance', `<details><summary>Recorded evidence entries (${report.evidence.length})</summary>` + report.evidence.map((item) => `<article id="${evidence.get(item.id)}"><h3>${esc(item.kind)}</h3>
+  ${asObject(item.data)?.rule ? `<p>Rule: ${esc(asObject(item.data)?.rule)}</p><details><summary>Original scanner text</summary><pre>${esc(item.summary)}</pre></details>` : paragraph(item.summary)}<p class="meta">${esc(scopeLine(item.scope))}</p>
   <dl>${label('Evidence ID', item.id)}${label('Source type', item.source.kind)}${label('Source', item.source.name)}
   ${label('Source reference', item.source.reference)}${label('Observed at', item.source.observedAt)}${label('Evidence key', item.key)}</dl>
-  ${json(item.data)}${referenceLine('Raw artifacts', item.artifactIds ?? [], artifacts)}</article>`).join('') || paragraph('No evidence was recorded.'))}
+  ${item.data === undefined ? '' : `<details><summary>Evidence data</summary>${json(item.data)}</details>`}${referenceLine('Raw artifacts', item.artifactIds ?? [], artifacts)}</article>`).join('') + '</details>')}
 ${section('Diagnostics', list(report.diagnostics ?? []) || paragraph('No diagnostics were recorded.'))}
 ${section('Raw artifact inventory', (report.artifacts.length ? paragraph('Raw files are separate downloads. This offline report embeds the report evidence and identifies any artifacts associated with the run.') : paragraph('No raw artifacts were recorded.')) +
   report.artifacts.map((item) => `<article id="${artifacts.get(item.id)}"><h3>${esc(item.label)}</h3>
     <dl>${label('Artifact ID', item.id)}${label('Media type', item.mediaType)}${label('Size (bytes)', item.byteLength)}
     ${label('Scope', item.scope && scopeLine(item.scope))}</dl></article>`).join(''))}
-${section('Run configuration and runtime', `${json(report.configuration)}<dl>
+${section('Run configuration and runtime', `<details><summary>Configuration and runtime details</summary>${json(report.configuration)}<dl>
   ${label('Node', report.runtime.node)}${label('Browser', report.runtime.browser)}${label('Engine', report.runtime.engine)}
-  ${label('Browser driver', report.runtime.browserDriver)}</dl>`)}
+  ${label('Browser driver', report.runtime.browserDriver)}</dl></details>`)}
 </main></body></html>`;
 }
+

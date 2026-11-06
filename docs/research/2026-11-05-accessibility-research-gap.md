@@ -1,0 +1,11 @@
+# Accessibility research-to-implementation gap
+
+Verified by the controller against the original local documents on November 5, 2026. The researcher's graph request did not return; the evidence below comes from direct controller reads, not from that incomplete lookup.
+
+1. **Keyboard and human-review boundaries were researched.** The October 27 implementation-reuse document, section 6, explicitly recommends axe on approved Playwright states, keyboard assertions, preservation of incomplete results, and human-review boundaries. The October 28 design, Accessibility section (around lines310–340), calls for state/component coverage, distinct scripted and human modalities, and granular repair verification. Sources: `/Users/jackiehimel/ai-garage-web/docs/handoff-session-2026-10-27-maintenance-implementation-reuse.md` section6; `/Users/jackiehimel/ai-garage-web/docs/handoff-session-2026-10-28-maintenance-agent-designs.md` Accessibility design.
+
+2. **The URL-only default did not implement that full workflow.** Before this enhancement, `src/agents/accessibility.ts` exercised keyboard paths only when a configured state existed. The URL-only flow captured the initial axe state. Incomplete entries used generic manual-verification guidance even though raw axe results retained more reason/context data. The original design assumed approved states/tasks; the simple URL input did not automatically supply them. This is a traceable product/implementation gap rather than evidence that automation limits were never researched.
+
+3. **Commercial-feature integration was not established by the inspected recommendation.** The October27 starting points are official axe Playwright, a11y-agent-skills, and Pa11yCI. The October19 current-AI review mentions Deque axe Monitor/AI as a comparator. These passages do not establish an implemented Deque automated IGT/Advanced Rules adapter, its subscription entitlement, or tested parity. This is not a claim that those product names appear nowhere in all historical research. Current commercial boundaries and usable APIs are independently documented in `2026-11-05-accessibility-tool-reuse.md`.
+
+The implemented follow-up should therefore be described narrowly: default bounded keyboard evidence and reason-specific assisted review, not a complete accessibility audit or equivalent to Deque's proprietary visual/AI test suite.
