@@ -114,11 +114,38 @@ export interface Comparison {
   status: 'first-run' | 'compatible' | 'incompatible'; reasons: string[]; findings: FindingChange[];
   metrics?: MetricChange[];
 }
+export interface AssessmentHypothesis {
+  subject: 'scanner' | 'site' | 'unknown'; statement: string; supportingFactIds: string[]; missingEvidence: string[];
+}
+export interface AssessmentClassification {
+  category: 'wcag' | 'best-practice' | 'other'; tags: string[]; criteria: string[]; impacts: string[];
+}
+export interface AssessmentCountGroups<T> { groups: T[]; omittedGroups: number; omittedFindingInstances: number }
+export interface AssessmentCounts {
+  findingInstances: number; evidenceEntries: number; coverageEntries: number;
+  byDisposition: Record<string, number>; automatic: { wcag: number; bestPractice: number; other: number };
+  byCoverageStatus: Record<string, number>;
+  byRuleDisposition: AssessmentCountGroups<{rule:string;disposition:Finding['disposition'];count:number}>;
+  byPageState: AssessmentCountGroups<{page:string;state?:string;count:number}>;
+}
+export interface AssessmentParameters {
+  colors: string[]; contrastRatios: number[]; quantities: { value: number; unit: string }[];
+}
+interface AssessmentFactBase { id: string; evidenceIds: string[]; provenance: Provenance[]; measuredParameters?: AssessmentParameters }
+export type AssessmentFact = AssessmentFactBase & (
+  | { kind: 'aggregate'; counts: AssessmentCounts }
+  | { kind: 'finding'; findingId: string; rule: string; scope: Scope; title: string; summary: string;
+      disposition: Finding['disposition']; severity: Priority; classification: AssessmentClassification;
+      coverageQuality: CoverageEntry[]; ownerIntent: 'indexable' | 'excluded' | 'unknown' }
+  | { kind: 'coverage'; coverageId: string; scope: Scope; subject: string; status: CoverageStatus; reason?: string; data?: JsonObject }
+  | { kind: 'observation'; evidenceId: string; scope: Scope; observationKind: string; summary: string }
+);
 export interface AssessmentAction {
   title: string; rationale: string; priority: Priority; steps: string[]; evidenceIds: string[];
+  mode?: 'investigate' | 'propose-correction'; targetFactIds?: string[]; verification?: string; hypothesis?: AssessmentHypothesis;
 }
 export type Assessment =
-  | { status: 'available'; model: string; usage?: {inputTokens: number; outputTokens: number}; summary: string; actions: AssessmentAction[]; sentEvidenceIds: string[]; truncated: boolean }
+  | { status: 'available'; model: string; usage?: {inputTokens: number; outputTokens: number}; summary: string; actions: AssessmentAction[]; sentEvidenceIds: string[]; truncated: boolean; groundingVersion?: 1; interpretation?: {text: string; claimIds: string[]; evidenceIds: string[]}; sentFacts?: AssessmentFact[] }
   | { status: 'unavailable'; reason: string; model?: string; sentEvidenceIds?: string[]; truncated?: boolean };
 export type Retention = { status: 'saved' | 'export-only' | 'failed'; reason?: string };
 interface AgentReportFields {

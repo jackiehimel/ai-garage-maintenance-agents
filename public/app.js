@@ -512,6 +512,12 @@ function renderComparison(root, comparison) {
 function renderAssessment(root, assessment, evidence) {
   const panel = section(root, 'assessment', 'AI interpretation');
   paragraph(panel, 'AI prose may contain errors. The measured results above are the source of truth; verify this draft against the affected locations before acting.', 'meta');
+  const grounded = assessment.status === 'available' && assessment.groundingVersion === 1;
+  if (grounded) {
+    paragraph(panel, 'Measured assessment summary');
+    paragraph(panel, assessment.summary);
+    paragraph(panel, 'Recorded facts checked against collected evidence. AI explanations and proposed investigations require verification. Reference and classification checks do not establish the semantic truth of generated prose.', 'meta');
+  }
   const draft = element('details', 'ai-draft');
   draft.append(element('summary', '', 'AI interpretation — unverified draft'));
   panel.append(draft);
@@ -520,7 +526,8 @@ function renderAssessment(root, assessment, evidence) {
     paragraph(draft, 'Assessment unavailable.');
     paragraph(draft, assessment.reason);
   } else {
-    paragraph(draft, assessment.summary);
+    paragraph(draft, grounded ? assessment.interpretation?.text : assessment.summary);
+    if (grounded) referenceLine(draft, 'Interpretation evidence', assessment.interpretation?.evidenceIds, evidence);
     if (!assessment.actions.length) paragraph(draft, 'The assessment did not propose any actions.');
   }
   detailList(draft, [
@@ -529,9 +536,16 @@ function renderAssessment(root, assessment, evidence) {
   referenceLine(draft, 'Evidence sent to the model', assessment.sentEvidenceIds, evidence);
   for (const action of assessment.actions ?? []) {
     const card = entry(draft, action.title);
-    paragraph(card, `AI-suggested priority (unverified): ${statusText(action.priority)}`, 'meta');
+    paragraph(card, `AI-suggested priority (unverified): ${statusText(action.priority)}${action.mode ? ` · ${action.mode}` : ''}`, 'meta');
     paragraph(card, action.rationale);
     itemList(card, action.steps, true);
+    if (action.verification) { paragraph(card, 'Required verification'); paragraph(card, action.verification); }
+    if (action.hypothesis) {
+      paragraph(card, `Hypothesis — unverified (${action.hypothesis.subject})`);
+      paragraph(card, action.hypothesis.statement);
+      paragraph(card, 'Missing evidence');
+      itemList(card, action.hypothesis.missingEvidence);
+    }
     referenceLine(card, 'Supporting evidence', action.evidenceIds, evidence);
   }
 }

@@ -1,5 +1,7 @@
 # Maintenance agents and standalone application
 
+The proposed next phase is [manager report readiness](docs/plans/2026-11-08-1821-feat-manager-report-readiness-plan.md). It adds an evidence-seeking agent investigation round and clearer manager reports. That proposal is not implemented or approved for deployment; the current bounded assessment contract below remains the executable behavior.
+
 ## Outcome and authority
 
 By November 5, 2026, deliver three independently callable maintenance agents and a standalone Solvd interface that runs them against an entered public URL. This repository is the implementation home. AI Garage remains the catalog and can link here later; changing or deploying it is not a prerequisite.
@@ -78,7 +80,9 @@ Public mode accepts HTTPS URLs including bounded queries and fragments (no useri
 
 Run/report retention is explicit: exported report JSON is portable across sessions; local run storage works on a configured writable filesystem. If storage fails, report that failure without claiming a saved baseline. A remote serverless temporary directory is not durable.
 
-AI receives a capped selection of structured evidence, with relevant findings prioritized and truncation disclosed. One request, no tools/retries, bounded output and timeout. Validate priorities, field lengths and all evidence references against the exact sent subset. Scores and measurements remain deterministic and cannot be overwritten by model output. Record actual model and usage; do not invent pricing.
+AI receives a bounded typed fact ledger and complete supporting evidence records, with relevant findings prioritized and omitted records disclosed. Whole-report counts and the factual assessment summary derive from all collected findings and coverage, independently of the sample. One request, no tools/retries, 45-second timeout, and 2200 output tokens. The model generates a fact-linked interpretation and at most three specific investigations or correction proposals, with generated rationale, priority, concrete verification and optional explicitly labelled hypotheses/missing evidence. This preserves new reasoning and investigations beyond collector guidance; it does not implement a tool-using investigation loop.
+
+Validate exact shapes, field lengths, duplicate values, sent fact references, disposition/classification/coverage gates and measured parameters. Derive evidence references server-side from cited facts. Scanner coverage failures cannot authorize a site correction or site-cause classification; review-needed, unknown-intent, best-practice-only and coverage-only targets require investigation at medium priority or below. Critical requires a supported critical finding. Missing accessible name does not establish failed dismissal. Numerical/color guards protect the supported measurement forms; they are not general natural-language entailment validation. Recorded facts are checked against collected evidence; AI explanations and proposed investigations require verification. Render generated prose as an unverified draft and retain historical report readability. Scores and measurements cannot be overwritten by model output. Record actual model and usage; do not invent pricing. Assessment failure preserves measured JSON and HTML without replacement AI.
 
 The interface uses restrained Solvd branding, three agent choices, URL input, optional configuration/baseline import, actual execution stages, current findings, comparison status, evidence-linked actions, incomplete coverage, HTML/JSON/raw-evidence exports and repeat run. It must not imply reviewer approval or complete conformance from an automated report.
 

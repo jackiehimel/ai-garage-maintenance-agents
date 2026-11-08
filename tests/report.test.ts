@@ -232,3 +232,28 @@ test('accessibility HTML gives a readable escaped keyboard sample and keeps old 
   assert.equal(document.querySelectorAll('img, script').length,0);
   assert.match(parse(exporter.renderReport({...a11y,measurements:undefined})).text,/No keyboard navigation sample was recorded/);
 });
+
+test('fact-linked assessment separates the measured summary from explicitly unverified generated reasoning', () => {
+  const linked: AgentReport = {...report,assessment:{...report.assessment,status:'available',model:'fixture',summary:'72 finding instances: 7 WCAG-tagged automatic findings, 3 best-practice findings, 62 review-needed.',actions:[{title:'Investigate the recorded button',priority:'medium',rationale:'Compare computed names.',steps:['Inspect the recorded state.'],evidenceIds:[report.evidence[0].id],mode:'investigate',targetFactIds:['finding:button'],verification:'Repeat axe in the recorded state and inspect the computed name.',hypothesis:{subject:'unknown',statement:'Naming might affect discovery.',supportingFactIds:['finding:button'],missingEvidence:['Assistive technology interaction was not recorded.']}}],sentEvidenceIds:[report.evidence[0].id],truncated:true,
+    groundingVersion:1,interpretation:{text:'Inspect the recorded close control.',claimIds:['finding:button'],evidenceIds:[report.evidence[0].id]},sentFacts:[{id:'finding:button'}]} as any};
+  const doc=parse(exporter.renderReport(linked));
+  assert.match(doc.text,/Recorded facts checked against collected evidence/);
+  assert.match(doc.text,/AI explanations and proposed investigations require verification/);
+  assert.match(doc.text,/Measured assessment summary/);
+  assert.match(doc.querySelector('.ai-draft')!.text,/Inspect the recorded close control/);
+  assert.match(doc.text,/Required verification.*Repeat axe/s);
+  assert.match(doc.text,/Hypothesis.*Naming might affect discovery/s);
+  assert.match(doc.text,/Missing evidence.*Assistive technology interaction/s);
+  assert.match(doc.text,/investigate/);
+  const unavailable={...linked,assessment:{status:'unavailable',reason:'Assessment references facts not supplied.'} as const};
+  assert.deepEqual(JSON.parse(JSON.stringify(unavailable)).findings,linked.findings);
+  const failed=parse(exporter.renderReport(unavailable));assert.ok(failed.text.includes(report.evidence[0].summary));assert.ok(failed.text.includes(report.findings[0].title));
+});
+
+test('live assessment renders generated interpretation, hypotheses and verification as unverified',()=>{
+  const app=readFileSync(new URL('../../public/app.js',import.meta.url),'utf8');const start=app.indexOf('function renderAssessment('),end=app.indexOf('function renderKeyboardProbe(',start);
+  const text:string[]=[];const node=()=>({append:()=>{}});
+  const render=runInNewContext(`${app.slice(start,end)};renderAssessment`,{section:node,element:(_t:unknown,_c:unknown,t:unknown)=>{if(t)text.push(String(t));return node();},paragraph:(_n:unknown,t:unknown)=>text.push(String(t)),detailList:()=>{},referenceLine:()=>{},entry:(_n:unknown,t:unknown)=>{text.push(String(t));return node();},statusText:String,itemList:(_n:unknown,items:unknown[])=>text.push(...items.map(String))});
+  render(node(),{status:'available',groundingVersion:1,summary:'Measured total',interpretation:{text:'Generated interpretation'},actions:[{title:'Investigate',priority:'medium',mode:'investigate',rationale:'Unverified rationale',steps:['Inspect'],evidenceIds:[],verification:'Repeat the measured check.',hypothesis:{subject:'unknown',statement:'Generated hypothesis',missingEvidence:['No activation result']}}],sentEvidenceIds:[]},new Map());
+  const value=text.join(' ');assert.match(value,/Recorded facts checked against collected evidence/);assert.match(value,/AI explanations and proposed investigations require verification/);assert.match(value,/Generated interpretation/);assert.match(value,/Required verification.*Repeat the measured check/);assert.match(value,/Generated hypothesis/);assert.match(value,/No activation result/);
+});

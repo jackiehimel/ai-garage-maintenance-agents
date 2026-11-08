@@ -1,0 +1,3654 @@
+{
+  "seo": {
+    "testedUrl": "https://solvd.com/",
+    "runtime": {
+      "node": "v24.22.1",
+      "engine": "seo-source-rendered-v1",
+      "browser": "156.0.8078.79",
+      "browserDriver": "1.63.0"
+    },
+    "coverage": [
+      {
+        "id": "cov_seo_7ae8847f53fcb0cf88ae16fd",
+        "scope": {
+          "page": "https://solvd.com/"
+        },
+        "subject": "source HTTP status and redirects",
+        "status": "complete"
+      },
+      {
+        "id": "cov_seo_05a4d9d78876a31b1b105360",
+        "scope": {
+          "page": "https://solvd.com/"
+        },
+        "subject": "source HTTP indexing directives",
+        "status": "complete"
+      },
+      {
+        "id": "cov_seo_ec71db0ba6dc0076dc149a4a",
+        "scope": {
+          "page": "https://solvd.com/"
+        },
+        "subject": "source HTML canonical and indexing directives",
+        "status": "complete"
+      },
+      {
+        "id": "cov_seo_e72bd8174eb41fcb534443a6",
+        "scope": {
+          "page": "https://solvd.com/"
+        },
+        "subject": "source JSON-LD parse and type observations",
+        "status": "complete"
+      },
+      {
+        "id": "cov_seo_041c2867f146eceb6818efa8",
+        "scope": {
+          "page": "https://solvd.com/"
+        },
+        "subject": "rendered HTTP status and redirects",
+        "status": "complete"
+      },
+      {
+        "id": "cov_seo_df187b6bd95843d513cdabb3",
+        "scope": {
+          "page": "https://solvd.com/"
+        },
+        "subject": "rendered HTTP indexing directives",
+        "status": "complete"
+      },
+      {
+        "id": "cov_seo_52810d613975a1ae99e00fdf",
+        "scope": {
+          "page": "https://solvd.com/"
+        },
+        "subject": "rendered HTML canonical and indexing directives",
+        "status": "incomplete",
+        "reason": "page.evaluate: ReferenceError: __name is not defined\n    at captureSeoDocument (eval at evaluate (:311:30), <anonymous>:1:372)\n    at UtilityScript.evaluate (<anonymous>:313:16)\n    at UtilityScript.<anonymous> (<anonymous>:1:44)"
+      },
+      {
+        "id": "cov_seo_2044cc63d72dbdbb9a58a6d2",
+        "scope": {
+          "page": "https://solvd.com/"
+        },
+        "subject": "rendered JSON-LD parse and type observations",
+        "status": "incomplete",
+        "reason": "page.evaluate: ReferenceError: __name is not defined\n    at captureSeoDocument (eval at evaluate (:311:30), <anonymous>:1:372)\n    at UtilityScript.evaluate (<anonymous>:313:16)\n    at UtilityScript.<anonymous> (<anonymous>:1:44)"
+      },
+      {
+        "id": "cov_seo_74c5f4d58256a341993b5711",
+        "scope": {
+          "page": "https://solvd.com/"
+        },
+        "subject": "robots.txt policy for observed page origins",
+        "status": "complete"
+      },
+      {
+        "id": "cov_seo_c6f1ca062ed402bb0350adce",
+        "scope": {
+          "page": "https://solvd.com/"
+        },
+        "subject": "sampled sitemap membership",
+        "status": "complete",
+        "data": {
+          "traversalCoverage": "incomplete",
+          "coverageBasis": "fully-parsed-urlset-match"
+        }
+      },
+      {
+        "id": "cov_seo_b52b2d5486763f589267ae51",
+        "scope": {
+          "page": "https://solvd.com/"
+        },
+        "subject": "owner-supplied Search Console evidence",
+        "status": "not-configured",
+        "reason": "No Search Console evidence supplied for this page"
+      }
+    ],
+    "evidence": [
+      {
+        "agentId": "seo-ai-search",
+        "scope": {
+          "page": "https://solvd.com/"
+        },
+        "kind": "seo.source-http",
+        "source": {
+          "kind": "measured",
+          "name": "DNS-pinned public HTTP",
+          "observedAt": "2026-11-08T22:59:26.494Z"
+        },
+        "summary": "source HTTP 200",
+        "data": {
+          "url": "https://solvd.com/",
+          "status": 200,
+          "redirects": [],
+          "contentType": "text/html; charset=UTF-8"
+        },
+        "id": "ev_a5339e03a36ce54ef23249d7"
+      },
+      {
+        "agentId": "seo-ai-search",
+        "scope": {
+          "page": "https://solvd.com/"
+        },
+        "kind": "seo.source-metadata",
+        "source": {
+          "kind": "measured",
+          "name": "DNS-pinned public HTTP",
+          "observedAt": "2026-11-08T22:59:26.494Z"
+        },
+        "summary": "source canonical and indexing directives",
+        "data": {
+          "title": "Solvd | AI Engineering Company",
+          "description": "Over a decade implementing AI in production. Practitioners and NeurIPS/ICML/ECCV researchers partnering with enterprises across AI, data, cloud, and quality engineering.",
+          "canonical": [
+            {
+              "href": "https://solvd.com/",
+              "url": "https://solvd.com/"
+            }
+          ],
+          "metaDirectives": [
+            {
+              "agent": "robots",
+              "value": "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1"
+            }
+          ],
+          "httpDirectives": [],
+          "xRobotsTag": [],
+          "reason": null,
+          "documentUrl": "https://solvd.com/"
+        },
+        "id": "ev_29e191c51dfbd9f7cdbc8f5d"
+      },
+      {
+        "agentId": "seo-ai-search",
+        "scope": {
+          "page": "https://solvd.com/"
+        },
+        "kind": "seo.source-structured-data",
+        "source": {
+          "kind": "measured",
+          "name": "DNS-pinned public HTTP",
+          "observedAt": "2026-11-08T22:59:26.494Z"
+        },
+        "summary": "1 JSON-LD blocks in source HTML",
+        "data": {
+          "count": 1,
+          "blocks": [
+            {
+              "index": 1,
+              "status": "parsed",
+              "types": [
+                "BreadcrumbList",
+                "EntryPoint",
+                "ImageObject",
+                "ListItem",
+                "Organization",
+                "PropertyValueSpecification",
+                "ReadAction",
+                "SearchAction",
+                "WebPage",
+                "WebSite"
+              ],
+              "reason": null
+            }
+          ],
+          "reason": null,
+          "coverage": "complete",
+          "format": "JSON-LD; syntax and type observations only"
+        },
+        "id": "ev_9527b42071f6ec2ed81a4b62"
+      },
+      {
+        "agentId": "seo-ai-search",
+        "scope": {
+          "page": "https://solvd.com/"
+        },
+        "kind": "seo.rendered-http",
+        "source": {
+          "kind": "measured",
+          "name": "Protected Chromium",
+          "observedAt": "2026-11-08T22:59:26.494Z"
+        },
+        "summary": "rendered HTTP 200",
+        "data": {
+          "url": "https://solvd.com/",
+          "status": 200,
+          "redirects": [],
+          "contentType": "text/html; charset=UTF-8",
+          "requestFailures": {
+            "failures": [
+              {
+                "method": "GET",
+                "url": "https://solvd.com/wp-content/uploads/2026/05/Homepage-hero-animation.mp4",
+                "resourceType": "media",
+                "mainDocument": false,
+                "reason": "failed: net::ERR_ABORTED"
+              },
+              {
+                "method": "POST",
+                "url": "https://analytics.google.com/g/collect",
+                "resourceType": "fetch",
+                "mainDocument": false,
+                "reason": "failed: net::ERR_BLOCKED_BY_CLIENT.Inspector"
+              },
+              {
+                "method": "POST",
+                "url": "https://stats.g.doubleclick.net/g/collect",
+                "resourceType": "ping",
+                "mainDocument": false,
+                "reason": "failed: net::ERR_BLOCKED_BY_CLIENT.Inspector"
+              },
+              {
+                "method": "POST",
+                "url": "https://www.google.com/g/collect",
+                "resourceType": "fetch",
+                "mainDocument": false,
+                "reason": "failed: net::ERR_BLOCKED_BY_CLIENT.Inspector"
+              },
+              {
+                "method": "POST",
+                "url": "https://www.google.com/rmkt/collect/646651083/",
+                "resourceType": "fetch",
+                "mainDocument": false,
+                "reason": "failed: net::ERR_BLOCKED_BY_CLIENT.Inspector"
+              },
+              {
+                "method": "POST",
+                "url": "https://www.google.com/ccm/collect",
+                "resourceType": "fetch",
+                "mainDocument": false,
+                "reason": "failed: net::ERR_BLOCKED_BY_CLIENT.Inspector"
+              },
+              {
+                "method": "POST",
+                "url": "https://ad.doubleclick.net/ccm/s/collect",
+                "resourceType": "fetch",
+                "mainDocument": false,
+                "reason": "failed: net::ERR_BLOCKED_BY_CLIENT.Inspector"
+              },
+              {
+                "method": "GET",
+                "url": "https://ad.doubleclick.net/ccm/s/collect",
+                "resourceType": "image",
+                "mainDocument": false,
+                "reason": "failed: net::ERR_BLOCKED_BY_ORB"
+              },
+              {
+                "method": "POST",
+                "url": "https://analytics.google.com/g/collect",
+                "resourceType": "xhr",
+                "mainDocument": false,
+                "reason": "Browser method blocked"
+              },
+              {
+                "method": "POST",
+                "url": "https://stats.g.doubleclick.net/g/collect",
+                "resourceType": "ping",
+                "mainDocument": false,
+                "reason": "Browser method blocked"
+              },
+              {
+                "method": "POST",
+                "url": "https://www.google.com/g/collect",
+                "resourceType": "xhr",
+                "mainDocument": false,
+                "reason": "Browser method blocked"
+              },
+              {
+                "method": "POST",
+                "url": "https://www.google.com/rmkt/collect/646651083/",
+                "resourceType": "xhr",
+                "mainDocument": false,
+                "reason": "Browser method blocked"
+              },
+              {
+                "method": "POST",
+                "url": "https://www.google.com/ccm/collect",
+                "resourceType": "xhr",
+                "mainDocument": false,
+                "reason": "Browser method blocked"
+              },
+              {
+                "method": "POST",
+                "url": "https://ad.doubleclick.net/ccm/s/collect",
+                "resourceType": "xhr",
+                "mainDocument": false,
+                "reason": "Browser method blocked"
+              }
+            ],
+            "overflow": 0
+          },
+          "requestFailureImpact": [
+            {
+              "index": 0,
+              "impact": "non-content",
+              "reason": "Image, media, font or ping failure retained outside HTML canonical, indexing and JSON-LD inspection scope"
+            },
+            {
+              "index": 1,
+              "impact": "non-content",
+              "reason": "Observed reporting endpoint was blocked; it does not establish a failed HTML metadata dependency"
+            },
+            {
+              "index": 2,
+              "impact": "non-content",
+              "reason": "Observed reporting endpoint was blocked; it does not establish a failed HTML metadata dependency"
+            },
+            {
+              "index": 3,
+              "impact": "non-content",
+              "reason": "Observed reporting endpoint was blocked; it does not establish a failed HTML metadata dependency"
+            },
+            {
+              "index": 4,
+              "impact": "non-content",
+              "reason": "Observed reporting endpoint was blocked; it does not establish a failed HTML metadata dependency"
+            },
+            {
+              "index": 5,
+              "impact": "non-content",
+              "reason": "Observed reporting endpoint was blocked; it does not establish a failed HTML metadata dependency"
+            },
+            {
+              "index": 6,
+              "impact": "non-content",
+              "reason": "Observed reporting endpoint was blocked; it does not establish a failed HTML metadata dependency"
+            },
+            {
+              "index": 7,
+              "impact": "non-content",
+              "reason": "Observed reporting endpoint was blocked; it does not establish a failed HTML metadata dependency"
+            },
+            {
+              "index": 8,
+              "impact": "non-content",
+              "reason": "Observed reporting endpoint was blocked; it does not establish a failed HTML metadata dependency"
+            },
+            {
+              "index": 9,
+              "impact": "non-content",
+              "reason": "Observed reporting endpoint was blocked; it does not establish a failed HTML metadata dependency"
+            },
+            {
+              "index": 10,
+              "impact": "non-content",
+              "reason": "Observed reporting endpoint was blocked; it does not establish a failed HTML metadata dependency"
+            },
+            {
+              "index": 11,
+              "impact": "non-content",
+              "reason": "Observed reporting endpoint was blocked; it does not establish a failed HTML metadata dependency"
+            },
+            {
+              "index": 12,
+              "impact": "non-content",
+              "reason": "Observed reporting endpoint was blocked; it does not establish a failed HTML metadata dependency"
+            },
+            {
+              "index": 13,
+              "impact": "non-content",
+              "reason": "Observed reporting endpoint was blocked; it does not establish a failed HTML metadata dependency"
+            }
+          ],
+          "navigation": "https://solvd.com/",
+          "finalConfirmed": true
+        },
+        "id": "ev_fe2bf0251e7945cc3b28afbe"
+      },
+      {
+        "agentId": "seo-ai-search",
+        "scope": {
+          "page": "https://solvd.com/"
+        },
+        "kind": "seo.rendered-metadata",
+        "source": {
+          "kind": "measured",
+          "name": "Protected Chromium",
+          "observedAt": "2026-11-08T22:59:26.494Z"
+        },
+        "summary": "rendered HTML metadata not observed",
+        "data": {
+          "title": null,
+          "description": null,
+          "canonical": null,
+          "metaDirectives": null,
+          "httpDirectives": [],
+          "xRobotsTag": [],
+          "reason": "page.evaluate: ReferenceError: __name is not defined\n    at captureSeoDocument (eval at evaluate (:311:30), <anonymous>:1:372)\n    at UtilityScript.evaluate (<anonymous>:313:16)\n    at UtilityScript.<anonymous> (<anonymous>:1:44)",
+          "documentUrl": "https://solvd.com/"
+        },
+        "id": "ev_9404fff2bf955ec20e85b338"
+      },
+      {
+        "agentId": "seo-ai-search",
+        "scope": {
+          "page": "https://solvd.com/"
+        },
+        "kind": "seo.rendered-structured-data",
+        "source": {
+          "kind": "measured",
+          "name": "Protected Chromium",
+          "observedAt": "2026-11-08T22:59:26.494Z"
+        },
+        "summary": "rendered JSON-LD not observed",
+        "data": {
+          "count": null,
+          "blocks": null,
+          "reason": "page.evaluate: ReferenceError: __name is not defined\n    at captureSeoDocument (eval at evaluate (:311:30), <anonymous>:1:372)\n    at UtilityScript.evaluate (<anonymous>:313:16)\n    at UtilityScript.<anonymous> (<anonymous>:1:44)",
+          "coverage": "incomplete",
+          "format": "JSON-LD; syntax and type observations only"
+        },
+        "id": "ev_f566e7f8edf31fa601689313"
+      },
+      {
+        "agentId": "seo-ai-search",
+        "scope": {
+          "page": "https://solvd.com/"
+        },
+        "kind": "seo.source-rendered",
+        "source": {
+          "kind": "measured",
+          "name": "DNS-pinned HTTP and protected Chromium",
+          "observedAt": "2026-11-08T22:59:26.494Z"
+        },
+        "summary": "Observed differences between source and rendered page",
+        "data": {
+          "status": false,
+          "finalUrl": false,
+          "canonical": null,
+          "metaDirectives": null,
+          "httpDirectives": false,
+          "jsonLd": null,
+          "observation": "null means one or both layers were unavailable or incomplete; false means the retained observations matched",
+          "ownerIntent": "unknown",
+          "ownerNote": null
+        },
+        "id": "ev_a2b3fb828d553c086fbfe9ec"
+      },
+      {
+        "agentId": "seo-ai-search",
+        "scope": {
+          "page": "https://solvd.com/"
+        },
+        "kind": "seo.robots-policy",
+        "source": {
+          "kind": "measured",
+          "name": "DNS-pinned public HTTP",
+          "observedAt": "2026-11-08T22:59:26.494Z"
+        },
+        "summary": "Robots policy for selected crawler user agents",
+        "data": {
+          "url": "https://solvd.com/robots.txt",
+          "affectedUrl": "https://solvd.com/",
+          "decisions": [
+            {
+              "agent": "Googlebot",
+              "group": "*",
+              "decision": "allowed",
+              "matchedRule": null
+            },
+            {
+              "agent": "Bingbot",
+              "group": "*",
+              "decision": "allowed",
+              "matchedRule": null
+            },
+            {
+              "agent": "GPTBot",
+              "group": "*",
+              "decision": "allowed",
+              "matchedRule": null
+            },
+            {
+              "agent": "OAI-SearchBot",
+              "group": "*",
+              "decision": "allowed",
+              "matchedRule": null
+            },
+            {
+              "agent": "ChatGPT-User",
+              "group": "*",
+              "decision": "allowed",
+              "matchedRule": null
+            },
+            {
+              "agent": "ClaudeBot",
+              "group": "*",
+              "decision": "allowed",
+              "matchedRule": null
+            },
+            {
+              "agent": "Claude-SearchBot",
+              "group": "*",
+              "decision": "allowed",
+              "matchedRule": null
+            },
+            {
+              "agent": "PerplexityBot",
+              "group": "*",
+              "decision": "allowed",
+              "matchedRule": null
+            },
+            {
+              "agent": "Applebot",
+              "group": "*",
+              "decision": "allowed",
+              "matchedRule": null
+            },
+            {
+              "agent": "Google-Extended",
+              "group": "*",
+              "decision": "allowed",
+              "matchedRule": null
+            },
+            {
+              "agent": "CCBot",
+              "group": "*",
+              "decision": "allowed",
+              "matchedRule": null
+            }
+          ],
+          "paths": [
+            {
+              "policy": "https://solvd.com/robots.txt",
+              "affected": "https://solvd.com/",
+              "decisions": [
+                {
+                  "agent": "Googlebot",
+                  "group": "*",
+                  "decision": "allowed",
+                  "matchedRule": null
+                },
+                {
+                  "agent": "Bingbot",
+                  "group": "*",
+                  "decision": "allowed",
+                  "matchedRule": null
+                },
+                {
+                  "agent": "GPTBot",
+                  "group": "*",
+                  "decision": "allowed",
+                  "matchedRule": null
+                },
+                {
+                  "agent": "OAI-SearchBot",
+                  "group": "*",
+                  "decision": "allowed",
+                  "matchedRule": null
+                },
+                {
+                  "agent": "ChatGPT-User",
+                  "group": "*",
+                  "decision": "allowed",
+                  "matchedRule": null
+                },
+                {
+                  "agent": "ClaudeBot",
+                  "group": "*",
+                  "decision": "allowed",
+                  "matchedRule": null
+                },
+                {
+                  "agent": "Claude-SearchBot",
+                  "group": "*",
+                  "decision": "allowed",
+                  "matchedRule": null
+                },
+                {
+                  "agent": "PerplexityBot",
+                  "group": "*",
+                  "decision": "allowed",
+                  "matchedRule": null
+                },
+                {
+                  "agent": "Applebot",
+                  "group": "*",
+                  "decision": "allowed",
+                  "matchedRule": null
+                },
+                {
+                  "agent": "Google-Extended",
+                  "group": "*",
+                  "decision": "allowed",
+                  "matchedRule": null
+                },
+                {
+                  "agent": "CCBot",
+                  "group": "*",
+                  "decision": "allowed",
+                  "matchedRule": null
+                }
+              ]
+            }
+          ],
+          "files": [
+            {
+              "url": "https://solvd.com/robots.txt",
+              "fetch": {
+                "url": "https://solvd.com/robots.txt",
+                "status": 200,
+                "redirects": [],
+                "contentType": "text/plain; charset=utf-8"
+              },
+              "status": "complete",
+              "reason": null,
+              "groupCount": 1,
+              "malformedRecords": 0,
+              "sitemapDeclarations": [
+                "https://solvd.com/sitemap_index.xml"
+              ]
+            }
+          ],
+          "caveat": "Observed rules and selected crawler tokens only. Access rules do not establish indexing or AI visibility."
+        },
+        "id": "ev_6f15e8e8955720fdc68bc630"
+      },
+      {
+        "agentId": "seo-ai-search",
+        "scope": {
+          "page": "https://solvd.com/"
+        },
+        "kind": "seo.sitemap-membership",
+        "source": {
+          "kind": "measured",
+          "name": "DNS-pinned public HTTP",
+          "observedAt": "2026-11-08T22:59:26.494Z"
+        },
+        "summary": "Page URL appears in the sampled sitemap data",
+        "data": {
+          "listed": true,
+          "listedUrls": [
+            "https://solvd.com/"
+          ],
+          "checkedUrls": [
+            "https://solvd.com/"
+          ],
+          "sampled": true,
+          "distinctLocations": 110,
+          "reasons": [
+            "Sitemap request or index depth limit reached; some documents were not fetched"
+          ],
+          "documents": [
+            {
+              "requested": "https://solvd.com/sitemap_index.xml",
+              "url": "https://solvd.com/sitemap_index.xml",
+              "status": 200,
+              "redirects": [],
+              "contentType": "text/xml; charset=UTF-8",
+              "root": "sitemapindex",
+              "locations": 7,
+              "sample": [
+                "https://solvd.com/page-sitemap.xml",
+                "https://solvd.com/article-sitemap.xml",
+                "https://solvd.com/case_study-sitemap.xml",
+                "https://solvd.com/white_paper-sitemap.xml",
+                "https://solvd.com/research-sitemap.xml",
+                "https://solvd.com/news-sitemap.xml"
+              ],
+              "reason": null
+            },
+            {
+              "requested": "https://solvd.com/page-sitemap.xml",
+              "url": "https://solvd.com/page-sitemap.xml",
+              "status": 200,
+              "redirects": [],
+              "contentType": "text/xml; charset=UTF-8",
+              "root": "urlset",
+              "locations": 31,
+              "sample": [
+                "https://solvd.com/",
+                "https://solvd.com/cookie-policy-au/",
+                "https://solvd.com/cookie-policy-br/",
+                "https://solvd.com/cookie-policy-ca/",
+                "https://solvd.com/cookie-policy-eu/",
+                "https://solvd.com/cookie-policy-uk/"
+              ],
+              "reason": null
+            },
+            {
+              "requested": "https://solvd.com/article-sitemap.xml",
+              "url": "https://solvd.com/article-sitemap.xml",
+              "status": 200,
+              "redirects": [],
+              "contentType": "text/xml; charset=UTF-8",
+              "root": "urlset",
+              "locations": 49,
+              "sample": [
+                "https://solvd.com/articles/agentic-ai-adoption-across-industries/",
+                "https://solvd.com/articles/the-reason-2025-is-ais-year-of-roi/",
+                "https://solvd.com/articles/with-ai-speed-is-the-strategy-and-the-system/",
+                "https://solvd.com/articles/addressing-public-fears-with-responsible-strategies/",
+                "https://solvd.com/articles/introducing-multimodal-commerce-the-next-era-of-customer-experience/",
+                "https://solvd.com/articles/mapping-bias-in-ai-from-mercator-to-machine-learning/"
+              ],
+              "reason": null
+            },
+            {
+              "requested": "https://solvd.com/case_study-sitemap.xml",
+              "url": "https://solvd.com/case_study-sitemap.xml",
+              "status": 200,
+              "redirects": [],
+              "contentType": "text/xml; charset=UTF-8",
+              "root": "urlset",
+              "locations": 30,
+              "sample": [
+                "https://solvd.com/cases/ai-search-for-furniture-retailer/",
+                "https://solvd.com/cases/generative-ai-user-experience-and-design-for-social-impact-ecosystems/",
+                "https://solvd.com/cases/digital-transformation-for-one-of-the-worlds-top-news-organizations/",
+                "https://solvd.com/cases/mindgram-from-idea-to-product-through-mvp/",
+                "https://solvd.com/cases/building-a-solid-foundation-for-a-better-farm-to-table-business/",
+                "https://solvd.com/cases/clothing-rental-subscription-platform-mvp/"
+              ],
+              "reason": null
+            }
+          ],
+          "coverage": "complete",
+          "traversalCoverage": "incomplete",
+          "coverageBasis": "fully-parsed-urlset-match"
+        },
+        "id": "ev_9fd2750f4b518c835b5fb4ef"
+      }
+    ],
+    "findings": [],
+    "artifacts": [],
+    "findingGroups": []
+  },
+  "accessibility": {
+    "testedUrl": "https://solvd.com/",
+    "runtime": {
+      "node": "v24.22.1",
+      "browser": "156.0.8078.79",
+      "engine": "axe-core 4.14.0",
+      "browserDriver": "1.63.0"
+    },
+    "coverage": [
+      {
+        "id": "a11y:72535a8001835f8b06801f8a",
+        "scope": {
+          "page": "https://solvd.com/",
+          "state": "initial"
+        },
+        "subject": "Page navigation",
+        "status": "complete",
+        "data": {
+          "testedUrl": "https://solvd.com/",
+          "httpStatus": 200
+        }
+      },
+      {
+        "id": "a11y:b78fade97e4f485351c233b0",
+        "scope": {
+          "page": "https://solvd.com/",
+          "state": "initial"
+        },
+        "subject": "Document resource readiness",
+        "status": "complete",
+        "data": {
+          "observedRequests": 32,
+          "failedResources": []
+        }
+      },
+      {
+        "id": "a11y:b0c66aa14345482c23bd9576",
+        "scope": {
+          "page": "https://solvd.com/",
+          "state": "initial"
+        },
+        "subject": "Sampled keyboard navigation",
+        "status": "complete",
+        "data": {
+          "observedSteps": 50,
+          "scopeLimit": "Bounded Tab and Shift+Tab sample in the initial document only. Observed labels are DOM/ARIA text hints, not computed accessible names. Review visible focus, intended order, widget activation, other states and screen-reader behavior manually; this sample does not check every interactive element."
+        }
+      },
+      {
+        "id": "a11y:8bb9e09e33575a381245f3d3",
+        "scope": {
+          "page": "https://solvd.com/",
+          "state": "initial"
+        },
+        "subject": "Explicit component mapping",
+        "status": "not-configured",
+        "reason": "No component selectors were configured.",
+        "data": {
+          "components": [],
+          "limitations": []
+        }
+      },
+      {
+        "id": "a11y:57e726a9752f8acaa435fbdd",
+        "scope": {
+          "page": "https://solvd.com/",
+          "state": "initial"
+        },
+        "subject": "axe-core scan",
+        "status": "complete",
+        "data": {
+          "executed": true,
+          "violationRules": 4,
+          "reviewRules": 2,
+          "passedRules": 44,
+          "inapplicableRules": 45,
+          "rawRetained": true
+        }
+      }
+    ],
+    "evidence": [
+      {
+        "agentId": "accessibility",
+        "kind": "axe-summary",
+        "scope": {
+          "page": "https://solvd.com/",
+          "state": "initial"
+        },
+        "summary": "axe checked the initial page. Automated results do not establish WCAG conformance or completion of human keyboard or screen-reader evaluation.",
+        "source": {
+          "kind": "measured",
+          "name": "axe-core via @axe-core/playwright",
+          "observedAt": "2026-11-08T23:00:48.964Z"
+        },
+        "data": {},
+        "id": "ev_1892896396fed71ed15928dc"
+      },
+      {
+        "agentId": "accessibility",
+        "kind": "axe-violation",
+        "scope": {
+          "page": "https://solvd.com/",
+          "state": "initial",
+          "element": ".notification-bar__close-btn"
+        },
+        "source": {
+          "kind": "measured",
+          "name": "axe-core via @axe-core/playwright",
+          "reference": "https://dequeuniversity.com/rules/axe/4.14/button-name?application=playwright",
+          "observedAt": "2026-11-08T23:00:48.964Z"
+        },
+        "id": "ev_33da9e5ec8761635d23ab980"
+      },
+      {
+        "agentId": "accessibility",
+        "kind": "axe-violation",
+        "scope": {
+          "page": "https://solvd.com/",
+          "state": "initial",
+          "element": "a[href$=\"services/\"]"
+        },
+        "source": {
+          "kind": "measured",
+          "name": "axe-core via @axe-core/playwright",
+          "reference": "https://dequeuniversity.com/rules/axe/4.14/color-contrast?application=playwright",
+          "observedAt": "2026-11-08T23:00:48.964Z"
+        },
+        "id": "ev_355cb825224c2b8e4c0de1f7"
+      },
+      {
+        "agentId": "accessibility",
+        "kind": "axe-violation",
+        "scope": {
+          "page": "https://solvd.com/",
+          "state": "initial",
+          "element": "#menu-item-1603 > a[href$=\"insights/\"]"
+        },
+        "source": {
+          "kind": "measured",
+          "name": "axe-core via @axe-core/playwright",
+          "reference": "https://dequeuniversity.com/rules/axe/4.14/color-contrast?application=playwright",
+          "observedAt": "2026-11-08T23:00:48.964Z"
+        },
+        "id": "ev_db5cc4545410a9e9053340bb"
+      },
+      {
+        "agentId": "accessibility",
+        "kind": "axe-violation",
+        "scope": {
+          "page": "https://solvd.com/",
+          "state": "initial",
+          "element": "#menu-item-486 > a[href$=\"about-us/\"]"
+        },
+        "source": {
+          "kind": "measured",
+          "name": "axe-core via @axe-core/playwright",
+          "reference": "https://dequeuniversity.com/rules/axe/4.14/color-contrast?application=playwright",
+          "observedAt": "2026-11-08T23:00:48.964Z"
+        },
+        "id": "ev_2b5de87662478c6d026b0c77"
+      },
+      {
+        "agentId": "accessibility",
+        "kind": "axe-violation",
+        "scope": {
+          "page": "https://solvd.com/",
+          "state": "initial",
+          "element": ".footer-copyright-text > span"
+        },
+        "source": {
+          "kind": "measured",
+          "name": "axe-core via @axe-core/playwright",
+          "reference": "https://dequeuniversity.com/rules/axe/4.14/color-contrast?application=playwright",
+          "observedAt": "2026-11-08T23:00:48.964Z"
+        },
+        "id": "ev_338bedc5d441dd8f3fa422a0"
+      },
+      {
+        "agentId": "accessibility",
+        "kind": "axe-violation",
+        "scope": {
+          "page": "https://solvd.com/",
+          "state": "initial",
+          "element": "a[rel=\"privacy-policy\"]"
+        },
+        "source": {
+          "kind": "measured",
+          "name": "axe-core via @axe-core/playwright",
+          "reference": "https://dequeuniversity.com/rules/axe/4.14/color-contrast?application=playwright",
+          "observedAt": "2026-11-08T23:00:48.964Z"
+        },
+        "id": "ev_b52ed959204dfe08f625bdda"
+      },
+      {
+        "agentId": "accessibility",
+        "kind": "axe-violation",
+        "scope": {
+          "page": "https://solvd.com/",
+          "state": "initial",
+          "element": "#menu-item-2245 > a"
+        },
+        "source": {
+          "kind": "measured",
+          "name": "axe-core via @axe-core/playwright",
+          "reference": "https://dequeuniversity.com/rules/axe/4.14/color-contrast?application=playwright",
+          "observedAt": "2026-11-08T23:00:48.964Z"
+        },
+        "id": "ev_5eb802fcf295e3193b872a5d"
+      },
+      {
+        "agentId": "accessibility",
+        "kind": "axe-violation",
+        "scope": {
+          "page": "https://solvd.com/",
+          "state": "initial",
+          "element": ".menu-footer-menu-1-container"
+        },
+        "source": {
+          "kind": "measured",
+          "name": "axe-core via @axe-core/playwright",
+          "reference": "https://dequeuniversity.com/rules/axe/4.14/landmark-unique?application=playwright",
+          "observedAt": "2026-11-08T23:00:48.964Z"
+        },
+        "id": "ev_e5fe3add5e6d2b27573d2ae5"
+      },
+      {
+        "agentId": "accessibility",
+        "kind": "axe-violation",
+        "scope": {
+          "page": "https://solvd.com/",
+          "state": "initial",
+          "element": ".skip-to-content-link"
+        },
+        "source": {
+          "kind": "measured",
+          "name": "axe-core via @axe-core/playwright",
+          "reference": "https://dequeuniversity.com/rules/axe/4.14/region?application=playwright",
+          "observedAt": "2026-11-08T23:00:48.964Z"
+        },
+        "id": "ev_f8b0db90149b7816ec608441"
+      },
+      {
+        "agentId": "accessibility",
+        "kind": "axe-violation",
+        "scope": {
+          "page": "https://solvd.com/",
+          "state": "initial",
+          "element": ".notification-bar__content"
+        },
+        "source": {
+          "kind": "measured",
+          "name": "axe-core via @axe-core/playwright",
+          "reference": "https://dequeuniversity.com/rules/axe/4.14/region?application=playwright",
+          "observedAt": "2026-11-08T23:00:48.964Z"
+        },
+        "id": "ev_5aa278c5bcbfb8757dc2b3db"
+      },
+      {
+        "agentId": "accessibility",
+        "kind": "axe-review",
+        "scope": {
+          "page": "https://solvd.com/",
+          "state": "initial",
+          "element": "#cmplz-message-1-optout"
+        },
+        "source": {
+          "kind": "measured",
+          "name": "axe-core via @axe-core/playwright",
+          "reference": "https://dequeuniversity.com/rules/axe/4.14/color-contrast?application=playwright",
+          "observedAt": "2026-11-08T23:00:48.964Z"
+        },
+        "id": "ev_d6b30d6371eb29818b441fd2"
+      },
+      {
+        "agentId": "accessibility",
+        "kind": "axe-review",
+        "scope": {
+          "page": "https://solvd.com/",
+          "state": "initial",
+          "element": ".notification-bar__text-item"
+        },
+        "source": {
+          "kind": "measured",
+          "name": "axe-core via @axe-core/playwright",
+          "reference": "https://dequeuniversity.com/rules/axe/4.14/color-contrast?application=playwright",
+          "observedAt": "2026-11-08T23:00:48.964Z"
+        },
+        "id": "ev_ee413b936a5f86d021458275"
+      },
+      {
+        "agentId": "accessibility",
+        "kind": "axe-review",
+        "scope": {
+          "page": "https://solvd.com/",
+          "state": "initial",
+          "element": ".notification-bar__cta"
+        },
+        "source": {
+          "kind": "measured",
+          "name": "axe-core via @axe-core/playwright",
+          "reference": "https://dequeuniversity.com/rules/axe/4.14/color-contrast?application=playwright",
+          "observedAt": "2026-11-08T23:00:48.964Z"
+        },
+        "id": "ev_970b229fcd66ffd159f38100"
+      },
+      {
+        "agentId": "accessibility",
+        "kind": "axe-review",
+        "scope": {
+          "page": "https://solvd.com/",
+          "state": "initial",
+          "element": ".line-mask[aria-hidden=\"true\"]:nth-child(1) > .line[aria-hidden=\"true\"]"
+        },
+        "source": {
+          "kind": "measured",
+          "name": "axe-core via @axe-core/playwright",
+          "reference": "https://dequeuniversity.com/rules/axe/4.14/color-contrast?application=playwright",
+          "observedAt": "2026-11-08T23:00:48.964Z"
+        },
+        "id": "ev_ee102d2285be52fb7b0d8203"
+      },
+      {
+        "agentId": "accessibility",
+        "kind": "axe-review",
+        "scope": {
+          "page": "https://solvd.com/",
+          "state": "initial",
+          "element": ".line-mask[aria-hidden=\"true\"]:nth-child(2) > .line[aria-hidden=\"true\"]"
+        },
+        "source": {
+          "kind": "measured",
+          "name": "axe-core via @axe-core/playwright",
+          "reference": "https://dequeuniversity.com/rules/axe/4.14/color-contrast?application=playwright",
+          "observedAt": "2026-11-08T23:00:48.964Z"
+        },
+        "id": "ev_5c87fef859fcde52e701fbff"
+      },
+      {
+        "agentId": "accessibility",
+        "kind": "axe-review",
+        "scope": {
+          "page": "https://solvd.com/",
+          "state": "initial",
+          "element": ".wp-elements-f44d45d4c3525539fa09db23bf8b8c67"
+        },
+        "source": {
+          "kind": "measured",
+          "name": "axe-core via @axe-core/playwright",
+          "reference": "https://dequeuniversity.com/rules/axe/4.14/color-contrast?application=playwright",
+          "observedAt": "2026-11-08T23:00:48.964Z"
+        },
+        "id": "ev_a39884adf936487bdc4165d0"
+      },
+      {
+        "agentId": "accessibility",
+        "kind": "axe-review",
+        "scope": {
+          "page": "https://solvd.com/",
+          "state": "initial",
+          "element": ".stat-item.wp-block-bb-stat-item:nth-child(1) > .stat-item__title"
+        },
+        "source": {
+          "kind": "measured",
+          "name": "axe-core via @axe-core/playwright",
+          "reference": "https://dequeuniversity.com/rules/axe/4.14/color-contrast?application=playwright",
+          "observedAt": "2026-11-08T23:00:48.964Z"
+        },
+        "id": "ev_f1d87d1edaa0bf571843891c"
+      },
+      {
+        "agentId": "accessibility",
+        "kind": "axe-review",
+        "scope": {
+          "page": "https://solvd.com/",
+          "state": "initial",
+          "element": ".stat-item.wp-block-bb-stat-item:nth-child(1) > .stat-item__description"
+        },
+        "source": {
+          "kind": "measured",
+          "name": "axe-core via @axe-core/playwright",
+          "reference": "https://dequeuniversity.com/rules/axe/4.14/color-contrast?application=playwright",
+          "observedAt": "2026-11-08T23:00:48.964Z"
+        },
+        "id": "ev_4a508ee46deb712cae74f226"
+      },
+      {
+        "agentId": "accessibility",
+        "kind": "axe-review",
+        "scope": {
+          "page": "https://solvd.com/",
+          "state": "initial",
+          "element": ".stat-item.wp-block-bb-stat-item:nth-child(2) > .stat-item__title"
+        },
+        "source": {
+          "kind": "measured",
+          "name": "axe-core via @axe-core/playwright",
+          "reference": "https://dequeuniversity.com/rules/axe/4.14/color-contrast?application=playwright",
+          "observedAt": "2026-11-08T23:00:48.964Z"
+        },
+        "id": "ev_a98fb1b0d931afda8f731323"
+      },
+      {
+        "agentId": "accessibility",
+        "kind": "axe-review",
+        "scope": {
+          "page": "https://solvd.com/",
+          "state": "initial",
+          "element": ".stat-item.wp-block-bb-stat-item:nth-child(2) > .stat-item__description"
+        },
+        "source": {
+          "kind": "measured",
+          "name": "axe-core via @axe-core/playwright",
+          "reference": "https://dequeuniversity.com/rules/axe/4.14/color-contrast?application=playwright",
+          "observedAt": "2026-11-08T23:00:48.964Z"
+        },
+        "id": "ev_6f9a312271d83a8d7221083f"
+      },
+      {
+        "agentId": "accessibility",
+        "kind": "axe-review",
+        "scope": {
+          "page": "https://solvd.com/",
+          "state": "initial",
+          "element": ".stat-item.wp-block-bb-stat-item:nth-child(3) > .stat-item__title"
+        },
+        "source": {
+          "kind": "measured",
+          "name": "axe-core via @axe-core/playwright",
+          "reference": "https://dequeuniversity.com/rules/axe/4.14/color-contrast?application=playwright",
+          "observedAt": "2026-11-08T23:00:48.964Z"
+        },
+        "id": "ev_53f1d11126a481d33d68d6db"
+      },
+      {
+        "agentId": "accessibility",
+        "kind": "axe-review",
+        "scope": {
+          "page": "https://solvd.com/",
+          "state": "initial",
+          "element": ".stat-item.wp-block-bb-stat-item:nth-child(3) > .stat-item__description"
+        },
+        "source": {
+          "kind": "measured",
+          "name": "axe-core via @axe-core/playwright",
+          "reference": "https://dequeuniversity.com/rules/axe/4.14/color-contrast?application=playwright",
+          "observedAt": "2026-11-08T23:00:48.964Z"
+        },
+        "id": "ev_1025aced2b4cf1f6e5dc381a"
+      },
+      {
+        "agentId": "accessibility",
+        "kind": "axe-review",
+        "scope": {
+          "page": "https://solvd.com/",
+          "state": "initial",
+          "element": ".section-container.wp-block-bb-section-container:nth-child(2) > .container > .horizontal-alignment--left.wp-block-group-is-layout-constrained.is-layout-constrained > .is-style-eyebrow-text.wp-block-paragraph"
+        },
+        "source": {
+          "kind": "measured",
+          "name": "axe-core via @axe-core/playwright",
+          "reference": "https://dequeuniversity.com/rules/axe/4.14/color-contrast?application=playwright",
+          "observedAt": "2026-11-08T23:00:48.964Z"
+        },
+        "id": "ev_a93345b73af99489316f9edc"
+      },
+      {
+        "agentId": "accessibility",
+        "kind": "axe-review",
+        "scope": {
+          "page": "https://solvd.com/",
+          "state": "initial",
+          "element": ".container > .horizontal-alignment--left.wp-block-group-is-layout-constrained.is-layout-constrained > .has-heading-3-font-size"
+        },
+        "source": {
+          "kind": "measured",
+          "name": "axe-core via @axe-core/playwright",
+          "reference": "https://dequeuniversity.com/rules/axe/4.14/color-contrast?application=playwright",
+          "observedAt": "2026-11-08T23:00:48.964Z"
+        },
+        "id": "ev_a1af381a9b2b999945cd6575"
+      },
+      {
+        "agentId": "accessibility",
+        "kind": "axe-review",
+        "scope": {
+          "page": "https://solvd.com/",
+          "state": "initial",
+          "element": ".wp-elements-aaf14918641f3407aea19f2d94d7d488 > .wp-block-paragraph"
+        },
+        "source": {
+          "kind": "measured",
+          "name": "axe-core via @axe-core/playwright",
+          "reference": "https://dequeuniversity.com/rules/axe/4.14/color-contrast?application=playwright",
+          "observedAt": "2026-11-08T23:00:48.964Z"
+        },
+        "id": "ev_ba24caad890651cf6620e145"
+      },
+      {
+        "agentId": "accessibility",
+        "kind": "axe-review",
+        "scope": {
+          "page": "https://solvd.com/",
+          "state": "initial",
+          "element": ".wp-elements-f1d92117a98de6ed4772d06a901c553a"
+        },
+        "source": {
+          "kind": "measured",
+          "name": "axe-core via @axe-core/playwright",
+          "reference": "https://dequeuniversity.com/rules/axe/4.14/color-contrast?application=playwright",
+          "observedAt": "2026-11-08T23:00:48.964Z"
+        },
+        "id": "ev_2b7c5a32336330ca0b4b59d3"
+      },
+      {
+        "agentId": "accessibility",
+        "kind": "axe-review",
+        "scope": {
+          "page": "https://solvd.com/",
+          "state": "initial",
+          "element": ".is-style-square-bullets > li:nth-child(1)"
+        },
+        "source": {
+          "kind": "measured",
+          "name": "axe-core via @axe-core/playwright",
+          "reference": "https://dequeuniversity.com/rules/axe/4.14/color-contrast?application=playwright",
+          "observedAt": "2026-11-08T23:00:48.964Z"
+        },
+        "id": "ev_68309cb8a74a68ebeba4f4ea"
+      },
+      {
+        "agentId": "accessibility",
+        "kind": "axe-review",
+        "scope": {
+          "page": "https://solvd.com/",
+          "state": "initial",
+          "element": ".is-style-square-bullets > li:nth-child(2)"
+        },
+        "source": {
+          "kind": "measured",
+          "name": "axe-core via @axe-core/playwright",
+          "reference": "https://dequeuniversity.com/rules/axe/4.14/color-contrast?application=playwright",
+          "observedAt": "2026-11-08T23:00:48.964Z"
+        },
+        "id": "ev_c4ba05c4a54285e577b0dccb"
+      },
+      {
+        "agentId": "accessibility",
+        "kind": "axe-review",
+        "scope": {
+          "page": "https://solvd.com/",
+          "state": "initial",
+          "element": ".is-style-square-bullets > li:nth-child(3)"
+        },
+        "source": {
+          "kind": "measured",
+          "name": "axe-core via @axe-core/playwright",
+          "reference": "https://dequeuniversity.com/rules/axe/4.14/color-contrast?application=playwright",
+          "observedAt": "2026-11-08T23:00:48.964Z"
+        },
+        "id": "ev_eb7b541572c8b281817df5aa"
+      },
+      {
+        "agentId": "accessibility",
+        "kind": "axe-review",
+        "scope": {
+          "page": "https://solvd.com/",
+          "state": "initial",
+          "element": ".is-style-square-bullets > li:nth-child(4)"
+        },
+        "source": {
+          "kind": "measured",
+          "name": "axe-core via @axe-core/playwright",
+          "reference": "https://dequeuniversity.com/rules/axe/4.14/color-contrast?application=playwright",
+          "observedAt": "2026-11-08T23:00:48.964Z"
+        },
+        "id": "ev_65dd089219bf7ee6b5122ee1"
+      },
+      {
+        "agentId": "accessibility",
+        "kind": "axe-review",
+        "scope": {
+          "page": "https://solvd.com/",
+          "state": "initial",
+          "element": ".has-heading-4-font-size > .wp-block-paragraph:nth-child(1)"
+        },
+        "source": {
+          "kind": "measured",
+          "name": "axe-core via @axe-core/playwright",
+          "reference": "https://dequeuniversity.com/rules/axe/4.14/color-contrast?application=playwright",
+          "observedAt": "2026-11-08T23:00:48.964Z"
+        },
+        "id": "ev_753e9f8d38cffaf6ad741bdd"
+      },
+      {
+        "agentId": "accessibility",
+        "kind": "axe-review",
+        "scope": {
+          "page": "https://solvd.com/",
+          "state": "initial",
+          "element": ".bb-text-bg-highlight"
+        },
+        "source": {
+          "kind": "measured",
+          "name": "axe-core via @axe-core/playwright",
+          "reference": "https://dequeuniversity.com/rules/axe/4.14/color-contrast?application=playwright",
+          "observedAt": "2026-11-08T23:00:48.964Z"
+        },
+        "id": "ev_95f437dd8a26e8f43b81a7b3"
+      },
+      {
+        "agentId": "accessibility",
+        "kind": "axe-review",
+        "scope": {
+          "page": "https://solvd.com/",
+          "state": "initial",
+          "element": ".wp-container-core-group-is-layout-e025687a > .flexible-columns-wrapper.wp-block-bb-flexible-columns > .has-1-columns-md.flexible-columns.has-2-columns > .has-custom-width-set.full-width-md.full-width-sm > .flexible-column__content.wp-block-bb-flexible-column > .wp-block-paragraph"
+        },
+        "source": {
+          "kind": "measured",
+          "name": "axe-core via @axe-core/playwright",
+          "reference": "https://dequeuniversity.com/rules/axe/4.14/color-contrast?application=playwright",
+          "observedAt": "2026-11-08T23:00:48.964Z"
+        },
+        "id": "ev_cdd1c2e0019d61ab33fc6065"
+      },
+      {
+        "agentId": "accessibility",
+        "kind": "axe-review",
+        "scope": {
+          "page": "https://solvd.com/",
+          "state": "initial",
+          "element": ".section-container.wp-block-bb-section-container.has-green-100-background-color > .container > .horizontal-alignment--left.wp-block-group-is-layout-constrained.is-layout-constrained > .is-style-eyebrow-text.wp-block-paragraph"
+        },
+        "source": {
+          "kind": "measured",
+          "name": "axe-core via @axe-core/playwright",
+          "reference": "https://dequeuniversity.com/rules/axe/4.14/color-contrast?application=playwright",
+          "observedAt": "2026-11-08T23:00:48.964Z"
+        },
+        "id": "ev_8f60ecae034b1bf0a0d7d918"
+      },
+      {
+        "agentId": "accessibility",
+        "kind": "axe-review",
+        "scope": {
+          "page": "https://solvd.com/",
+          "state": "initial",
+          "element": ".section-container.wp-block-bb-section-container.has-green-100-background-color > .container > .horizontal-alignment--left.wp-block-group-is-layout-constrained.is-layout-constrained > h2"
+        },
+        "source": {
+          "kind": "measured",
+          "name": "axe-core via @axe-core/playwright",
+          "reference": "https://dequeuniversity.com/rules/axe/4.14/color-contrast?application=playwright",
+          "observedAt": "2026-11-08T23:00:48.964Z"
+        },
+        "id": "ev_3a5d1f891b2a1f912a4fe279"
+      },
+      {
+        "agentId": "accessibility",
+        "kind": "axe-review",
+        "scope": {
+          "page": "https://solvd.com/",
+          "state": "initial",
+          "element": ".swiper-slide-visible > .wp-block-group-is-layout-constrained.is-layout-constrained.wp-block-group > .flexible-columns-wrapper.wp-block-bb-flexible-columns > .has-1-columns-sm.flexible-columns.has-2-columns > .order-sm-last.flexible-column > .flex-direction-column.flexible-column__content.wp-block-bb-flexible-column > .wp-block-cover.is-light.has-custom-content-position > .wp-block-cover__inner-container.wp-block-cover-is-layout-constrained.is-layout-constrained > .link-card.hover-effect--darken-overlay.wp-block-bb-link-card > .link-card__content > .has-secondary-font-family.has-heading-5-font-size.wp-block-paragraph"
+        },
+        "source": {
+          "kind": "measured",
+          "name": "axe-core via @axe-core/playwright",
+          "reference": "https://dequeuniversity.com/rules/axe/4.14/color-contrast?application=playwright",
+          "observedAt": "2026-11-08T23:00:48.964Z"
+        },
+        "id": "ev_e4a38de1298cc3e277e1e90c"
+      },
+      {
+        "agentId": "accessibility",
+        "kind": "axe-review",
+        "scope": {
+          "page": "https://solvd.com/",
+          "state": "initial",
+          "element": ".swiper-slide-visible > .wp-block-group-is-layout-constrained.is-layout-constrained.wp-block-group > .flexible-columns-wrapper.wp-block-bb-flexible-columns > .has-1-columns-sm.flexible-columns.has-2-columns > .order-sm-last.flexible-column > .flex-direction-column.flexible-column__content.wp-block-bb-flexible-column > .wp-block-cover.is-light.has-custom-content-position > .wp-block-cover__inner-container.wp-block-cover-is-layout-constrained.is-layout-constrained > .link-card.hover-effect--darken-overlay.wp-block-bb-link-card > .link-card__cta.btn--link.btn"
+        },
+        "source": {
+          "kind": "measured",
+          "name": "axe-core via @axe-core/playwright",
+          "reference": "https://dequeuniversity.com/rules/axe/4.14/color-contrast?application=playwright",
+          "observedAt": "2026-11-08T23:00:48.964Z"
+        },
+        "id": "ev_193369dca63db80471555175"
+      },
+      {
+        "agentId": "accessibility",
+        "kind": "axe-review",
+        "scope": {
+          "page": "https://solvd.com/",
+          "state": "initial",
+          "element": ".swiper-slide-visible > .wp-block-group-is-layout-constrained.is-layout-constrained.wp-block-group > .flexible-columns-wrapper.wp-block-bb-flexible-columns > .has-1-columns-sm.flexible-columns.has-2-columns > .flexible-column:nth-child(2) > .flex-direction-column.flexible-column__content.wp-block-bb-flexible-column > .is-content-justification-stretch.wp-container-core-group-is-layout-10dd94be.horizontal-alignment--left > h3"
+        },
+        "source": {
+          "kind": "measured",
+          "name": "axe-core via @axe-core/playwright",
+          "reference": "https://dequeuniversity.com/rules/axe/4.14/color-contrast?application=playwright",
+          "observedAt": "2026-11-08T23:00:48.964Z"
+        },
+        "id": "ev_862b500f8532d03f9bae259b"
+      },
+      {
+        "agentId": "accessibility",
+        "kind": "axe-review",
+        "scope": {
+          "page": "https://solvd.com/",
+          "state": "initial",
+          "element": ".wp-elements-6d5f860b34ed92814865586fbd9d6d8a > .wp-block-paragraph"
+        },
+        "source": {
+          "kind": "measured",
+          "name": "axe-core via @axe-core/playwright",
+          "reference": "https://dequeuniversity.com/rules/axe/4.14/color-contrast?application=playwright",
+          "observedAt": "2026-11-08T23:00:48.964Z"
+        },
+        "id": "ev_12b0f5d32805e8fcb7c9c5ff"
+      },
+      {
+        "agentId": "accessibility",
+        "kind": "axe-review",
+        "scope": {
+          "page": "https://solvd.com/",
+          "state": "initial",
+          "element": ".swiper-slide-visible > .wp-block-group-is-layout-constrained.is-layout-constrained.wp-block-group > .flexible-columns-wrapper.wp-block-bb-flexible-columns > .has-1-columns-sm.flexible-columns.has-2-columns > .flexible-column:nth-child(2) > .flex-direction-column.flexible-column__content.wp-block-bb-flexible-column > .is-content-justification-stretch.wp-container-core-group-is-layout-10dd94be.horizontal-alignment--left > .wp-block-group-is-layout-constrained.is-layout-constrained.wp-block-group:nth-child(3) > .has-medium-font-size.wp-block-paragraph"
+        },
+        "source": {
+          "kind": "measured",
+          "name": "axe-core via @axe-core/playwright",
+          "reference": "https://dequeuniversity.com/rules/axe/4.14/color-contrast?application=playwright",
+          "observedAt": "2026-11-08T23:00:48.964Z"
+        },
+        "id": "ev_941097bb09f0c88cccd75a8b"
+      },
+      {
+        "agentId": "accessibility",
+        "kind": "axe-review",
+        "scope": {
+          "page": "https://solvd.com/",
+          "state": "initial",
+          "element": ".swiper-slide-visible > .wp-block-group-is-layout-constrained.is-layout-constrained.wp-block-group > .flexible-columns-wrapper.wp-block-bb-flexible-columns > .has-1-columns-sm.flexible-columns.has-2-columns > .flexible-column:nth-child(2) > .flex-direction-column.flexible-column__content.wp-block-bb-flexible-column > .is-content-justification-stretch.wp-container-core-group-is-layout-10dd94be.horizontal-alignment--left > .wp-block-group-is-layout-constrained.is-layout-constrained.wp-block-group:nth-child(3) > .is-style-checkmark-bullets.wp-block-list.has-border > li:nth-child(1)"
+        },
+        "source": {
+          "kind": "measured",
+          "name": "axe-core via @axe-core/playwright",
+          "reference": "https://dequeuniversity.com/rules/axe/4.14/color-contrast?application=playwright",
+          "observedAt": "2026-11-08T23:00:48.964Z"
+        },
+        "id": "ev_8f4485f525f7cf27fe166773"
+      },
+      {
+        "agentId": "accessibility",
+        "kind": "axe-review",
+        "scope": {
+          "page": "https://solvd.com/",
+          "state": "initial",
+          "element": ".swiper-slide-visible > .wp-block-group-is-layout-constrained.is-layout-constrained.wp-block-group > .flexible-columns-wrapper.wp-block-bb-flexible-columns > .has-1-columns-sm.flexible-columns.has-2-columns > .flexible-column:nth-child(2) > .flex-direction-column.flexible-column__content.wp-block-bb-flexible-column > .is-content-justification-stretch.wp-container-core-group-is-layout-10dd94be.horizontal-alignment--left > .wp-block-group-is-layout-constrained.is-layout-constrained.wp-block-group:nth-child(3) > .is-style-checkmark-bullets.wp-block-list.has-border > li:nth-child(2)"
+        },
+        "source": {
+          "kind": "measured",
+          "name": "axe-core via @axe-core/playwright",
+          "reference": "https://dequeuniversity.com/rules/axe/4.14/color-contrast?application=playwright",
+          "observedAt": "2026-11-08T23:00:48.964Z"
+        },
+        "id": "ev_b4acc8d42f81379ed755ccdd"
+      },
+      {
+        "agentId": "accessibility",
+        "kind": "axe-review",
+        "scope": {
+          "page": "https://solvd.com/",
+          "state": "initial",
+          "element": ".swiper-slide-visible > .wp-block-group-is-layout-constrained.is-layout-constrained.wp-block-group > .flexible-columns-wrapper.wp-block-bb-flexible-columns > .has-1-columns-sm.flexible-columns.has-2-columns > .flexible-column:nth-child(2) > .flex-direction-column.flexible-column__content.wp-block-bb-flexible-column > .is-content-justification-stretch.wp-container-core-group-is-layout-10dd94be.horizontal-alignment--left > .wp-block-group-is-layout-constrained.is-layout-constrained.wp-block-group:nth-child(3) > .is-style-checkmark-bullets.wp-block-list.has-border > li:nth-child(3)"
+        },
+        "source": {
+          "kind": "measured",
+          "name": "axe-core via @axe-core/playwright",
+          "reference": "https://dequeuniversity.com/rules/axe/4.14/color-contrast?application=playwright",
+          "observedAt": "2026-11-08T23:00:48.964Z"
+        },
+        "id": "ev_9bd05b0dd04b04e22383135f"
+      },
+      {
+        "agentId": "accessibility",
+        "kind": "axe-review",
+        "scope": {
+          "page": "https://solvd.com/",
+          "state": "initial",
+          "element": ".section-with-horizontal-scroll__header > .horizontal-alignment--left.wp-block-group-is-layout-constrained.is-layout-constrained > .is-style-eyebrow-text.wp-block-paragraph"
+        },
+        "source": {
+          "kind": "measured",
+          "name": "axe-core via @axe-core/playwright",
+          "reference": "https://dequeuniversity.com/rules/axe/4.14/color-contrast?application=playwright",
+          "observedAt": "2026-11-08T23:00:48.964Z"
+        },
+        "id": "ev_b7811e1be827f1958fc1a11f"
+      },
+      {
+        "agentId": "accessibility",
+        "kind": "axe-review",
+        "scope": {
+          "page": "https://solvd.com/",
+          "state": "initial",
+          "element": ".section-with-horizontal-scroll__header > .horizontal-alignment--left.wp-block-group-is-layout-constrained.is-layout-constrained > h2"
+        },
+        "source": {
+          "kind": "measured",
+          "name": "axe-core via @axe-core/playwright",
+          "reference": "https://dequeuniversity.com/rules/axe/4.14/color-contrast?application=playwright",
+          "observedAt": "2026-11-08T23:00:48.964Z"
+        },
+        "id": "ev_04121eb6cd0128ea33d15abd"
+      },
+      {
+        "agentId": "accessibility",
+        "kind": "axe-review",
+        "scope": {
+          "page": "https://solvd.com/",
+          "state": "initial",
+          "element": ".horizontal-scroll-item.wp-block-bb-horizontal-scroll-item.wp-container-bb-horizontal-scroll-item-is-layout-6a093f15:nth-child(1) > .wp-container-content-9cfa9a5a.wp-container-core-group-is-layout-21e01eef.has-green-100-background-color > h3"
+        },
+        "source": {
+          "kind": "measured",
+          "name": "axe-core via @axe-core/playwright",
+          "reference": "https://dequeuniversity.com/rules/axe/4.14/color-contrast?application=playwright",
+          "observedAt": "2026-11-08T23:00:48.964Z"
+        },
+        "id": "ev_df994526d97aa06426efb337"
+      },
+      {
+        "agentId": "accessibility",
+        "kind": "axe-review",
+        "scope": {
+          "page": "https://solvd.com/",
+          "state": "initial",
+          "element": ".wp-elements-185707c8b2376918ada87559f1a9c721"
+        },
+        "source": {
+          "kind": "measured",
+          "name": "axe-core via @axe-core/playwright",
+          "reference": "https://dequeuniversity.com/rules/axe/4.14/color-contrast?application=playwright",
+          "observedAt": "2026-11-08T23:00:48.964Z"
+        },
+        "id": "ev_3805b60a9420ea1296d34148"
+      },
+      {
+        "agentId": "accessibility",
+        "kind": "axe-review",
+        "scope": {
+          "page": "https://solvd.com/",
+          "state": "initial",
+          "element": ".horizontal-scroll-item.wp-block-bb-horizontal-scroll-item.wp-container-bb-horizontal-scroll-item-is-layout-6a093f15:nth-child(1) > .wp-container-content-9cfa9a5a.wp-container-core-group-is-layout-21e01eef.has-green-100-background-color > .wp-block-buttons.wp-block-buttons-is-layout-flex.is-layout-flex > .is-style-link.wp-block-button > .wp-block-button__link.wp-element-button"
+        },
+        "source": {
+          "kind": "measured",
+          "name": "axe-core via @axe-core/playwright",
+          "reference": "https://dequeuniversity.com/rules/axe/4.14/color-contrast?application=playwright",
+          "observedAt": "2026-11-08T23:00:48.964Z"
+        },
+        "id": "ev_ab634634c4130ad33b1caa95"
+      },
+      {
+        "agentId": "accessibility",
+        "kind": "axe-review",
+        "scope": {
+          "page": "https://solvd.com/",
+          "state": "initial",
+          "element": ".horizontal-scroll-item.wp-block-bb-horizontal-scroll-item.wp-container-bb-horizontal-scroll-item-is-layout-6a093f15:nth-child(2) > .wp-container-content-9cfa9a5a.wp-container-core-group-is-layout-21e01eef.has-green-100-background-color > h3"
+        },
+        "source": {
+          "kind": "measured",
+          "name": "axe-core via @axe-core/playwright",
+          "reference": "https://dequeuniversity.com/rules/axe/4.14/color-contrast?application=playwright",
+          "observedAt": "2026-11-08T23:00:48.964Z"
+        },
+        "id": "ev_ae635da5ffae931cc360d705"
+      },
+      {
+        "agentId": "accessibility",
+        "kind": "axe-review",
+        "scope": {
+          "page": "https://solvd.com/",
+          "state": "initial",
+          "element": ".wp-elements-a3628ddd897ce8dbc2c2e14348baa67d"
+        },
+        "source": {
+          "kind": "measured",
+          "name": "axe-core via @axe-core/playwright",
+          "reference": "https://dequeuniversity.com/rules/axe/4.14/color-contrast?application=playwright",
+          "observedAt": "2026-11-08T23:00:48.964Z"
+        },
+        "id": "ev_6eb5c9e964f885ebfbf7fd73"
+      },
+      {
+        "agentId": "accessibility",
+        "kind": "axe-review",
+        "scope": {
+          "page": "https://solvd.com/",
+          "state": "initial",
+          "element": ".horizontal-scroll-item.wp-block-bb-horizontal-scroll-item.wp-container-bb-horizontal-scroll-item-is-layout-6a093f15:nth-child(2) > .wp-container-content-9cfa9a5a.wp-container-core-group-is-layout-21e01eef.has-green-100-background-color > .wp-block-buttons.wp-block-buttons-is-layout-flex.is-layout-flex > .is-style-link.wp-block-button > .wp-block-button__link.wp-element-button"
+        },
+        "source": {
+          "kind": "measured",
+          "name": "axe-core via @axe-core/playwright",
+          "reference": "https://dequeuniversity.com/rules/axe/4.14/color-contrast?application=playwright",
+          "observedAt": "2026-11-08T23:00:48.964Z"
+        },
+        "id": "ev_eb8a9f59e0101166dd9508a3"
+      },
+      {
+        "agentId": "accessibility",
+        "kind": "axe-review",
+        "scope": {
+          "page": "https://solvd.com/",
+          "state": "initial",
+          "element": ".horizontal-scroll-item.wp-block-bb-horizontal-scroll-item.wp-container-bb-horizontal-scroll-item-is-layout-6a093f15:nth-child(3) > .wp-container-content-9cfa9a5a.wp-container-core-group-is-layout-21e01eef.has-green-100-background-color > h3"
+        },
+        "source": {
+          "kind": "measured",
+          "name": "axe-core via @axe-core/playwright",
+          "reference": "https://dequeuniversity.com/rules/axe/4.14/color-contrast?application=playwright",
+          "observedAt": "2026-11-08T23:00:48.964Z"
+        },
+        "id": "ev_a15718540a4754b721c7af4b"
+      },
+      {
+        "agentId": "accessibility",
+        "kind": "axe-review",
+        "scope": {
+          "page": "https://solvd.com/",
+          "state": "initial",
+          "element": ".wp-elements-df7685cb17a8f4264a9246ea8a69552b"
+        },
+        "source": {
+          "kind": "measured",
+          "name": "axe-core via @axe-core/playwright",
+          "reference": "https://dequeuniversity.com/rules/axe/4.14/color-contrast?application=playwright",
+          "observedAt": "2026-11-08T23:00:48.964Z"
+        },
+        "id": "ev_ba2dfd055c4d28cf02bdb140"
+      },
+      {
+        "agentId": "accessibility",
+        "kind": "axe-review",
+        "scope": {
+          "page": "https://solvd.com/",
+          "state": "initial",
+          "element": ".horizontal-scroll-item.wp-block-bb-horizontal-scroll-item.wp-container-bb-horizontal-scroll-item-is-layout-6a093f15:nth-child(3) > .wp-container-content-9cfa9a5a.wp-container-core-group-is-layout-21e01eef.has-green-100-background-color > .wp-block-buttons.wp-block-buttons-is-layout-flex.is-layout-flex > .is-style-link.wp-block-button > .wp-block-button__link.wp-element-button"
+        },
+        "source": {
+          "kind": "measured",
+          "name": "axe-core via @axe-core/playwright",
+          "reference": "https://dequeuniversity.com/rules/axe/4.14/color-contrast?application=playwright",
+          "observedAt": "2026-11-08T23:00:48.964Z"
+        },
+        "id": "ev_41c977c3b044fc092fe701d7"
+      },
+      {
+        "agentId": "accessibility",
+        "kind": "axe-review",
+        "scope": {
+          "page": "https://solvd.com/",
+          "state": "initial",
+          "element": ".wp-block-group-is-layout-constrained.is-layout-constrained.wp-block-group:nth-child(1) > .flexible-columns-wrapper.wp-block-bb-flexible-columns > .has-1-columns-md.flexible-columns.has-2-columns > .has-custom-width-set.full-width-md.full-width-sm:nth-child(1) > .flexible-column__content.wp-block-bb-flexible-column > .is-style-eyebrow-text.wp-block-paragraph"
+        },
+        "source": {
+          "kind": "measured",
+          "name": "axe-core via @axe-core/playwright",
+          "reference": "https://dequeuniversity.com/rules/axe/4.14/color-contrast?application=playwright",
+          "observedAt": "2026-11-08T23:00:48.964Z"
+        },
+        "id": "ev_297a991d26a1ca33e2cf387a"
+      },
+      {
+        "agentId": "accessibility",
+        "kind": "axe-review",
+        "scope": {
+          "page": "https://solvd.com/",
+          "state": "initial",
+          "element": ".wp-block-group-is-layout-constrained.is-layout-constrained.wp-block-group:nth-child(1) > .flexible-columns-wrapper.wp-block-bb-flexible-columns > .has-1-columns-md.flexible-columns.has-2-columns > .has-custom-width-set.full-width-md.full-width-sm:nth-child(2) > .flexible-column__content.wp-block-bb-flexible-column > .horizontal-alignment--left.wp-block-group-is-layout-constrained.is-layout-constrained > .has-heading-3-font-size"
+        },
+        "source": {
+          "kind": "measured",
+          "name": "axe-core via @axe-core/playwright",
+          "reference": "https://dequeuniversity.com/rules/axe/4.14/color-contrast?application=playwright",
+          "observedAt": "2026-11-08T23:00:48.964Z"
+        },
+        "id": "ev_ad44e8befc85bb625bd39052"
+      },
+      {
+        "agentId": "accessibility",
+        "kind": "axe-review",
+        "scope": {
+          "page": "https://solvd.com/",
+          "state": "initial",
+          "element": ".has-gray-100-color > .wp-block-paragraph"
+        },
+        "source": {
+          "kind": "measured",
+          "name": "axe-core via @axe-core/playwright",
+          "reference": "https://dequeuniversity.com/rules/axe/4.14/color-contrast?application=playwright",
+          "observedAt": "2026-11-08T23:00:48.964Z"
+        },
+        "id": "ev_43226648ce44f612b58e9633"
+      },
+      {
+        "agentId": "accessibility",
+        "kind": "axe-review",
+        "scope": {
+          "page": "https://solvd.com/",
+          "state": "initial",
+          "element": ".wp-block-group-is-layout-constrained.is-layout-constrained.wp-block-group:nth-child(3) > .flexible-columns-wrapper.wp-block-bb-flexible-columns > .has-1-columns-md.flexible-columns.has-2-columns > .has-custom-width-set.full-width-md.full-width-sm:nth-child(1) > .flexible-column__content.wp-block-bb-flexible-column > .is-style-eyebrow-text.wp-block-paragraph"
+        },
+        "source": {
+          "kind": "measured",
+          "name": "axe-core via @axe-core/playwright",
+          "reference": "https://dequeuniversity.com/rules/axe/4.14/color-contrast?application=playwright",
+          "observedAt": "2026-11-08T23:00:48.964Z"
+        },
+        "id": "ev_251cb582f425730ea0311eed"
+      },
+      {
+        "agentId": "accessibility",
+        "kind": "axe-review",
+        "scope": {
+          "page": "https://solvd.com/",
+          "state": "initial",
+          "element": ".wp-block-group-is-layout-constrained.is-layout-constrained.wp-block-group:nth-child(3) > .flexible-columns-wrapper.wp-block-bb-flexible-columns > .has-1-columns-md.flexible-columns.has-2-columns > .has-custom-width-set.full-width-md.full-width-sm:nth-child(2) > .flexible-column__content.wp-block-bb-flexible-column > .horizontal-alignment--left.wp-block-group-is-layout-constrained.is-layout-constrained > .has-heading-3-font-size"
+        },
+        "source": {
+          "kind": "measured",
+          "name": "axe-core via @axe-core/playwright",
+          "reference": "https://dequeuniversity.com/rules/axe/4.14/color-contrast?application=playwright",
+          "observedAt": "2026-11-08T23:00:48.964Z"
+        },
+        "id": "ev_24c475eefaa6616cbd8eabf5"
+      },
+      {
+        "agentId": "accessibility",
+        "kind": "axe-review",
+        "scope": {
+          "page": "https://solvd.com/",
+          "state": "initial",
+          "element": ".has-white-background-color"
+        },
+        "source": {
+          "kind": "measured",
+          "name": "axe-core via @axe-core/playwright",
+          "reference": "https://dequeuniversity.com/rules/axe/4.14/color-contrast?application=playwright",
+          "observedAt": "2026-11-08T23:00:48.964Z"
+        },
+        "id": "ev_aa8f74e61def23005d7fbdb2"
+      },
+      {
+        "agentId": "accessibility",
+        "kind": "axe-review",
+        "scope": {
+          "page": "https://solvd.com/",
+          "state": "initial",
+          "element": ".wp-elements-c6d4b27e2c2b379f09f425dbf3db771a"
+        },
+        "source": {
+          "kind": "measured",
+          "name": "axe-core via @axe-core/playwright",
+          "reference": "https://dequeuniversity.com/rules/axe/4.14/color-contrast?application=playwright",
+          "observedAt": "2026-11-08T23:00:48.964Z"
+        },
+        "id": "ev_40ca3257789c0f2ccdfad83a"
+      },
+      {
+        "agentId": "accessibility",
+        "kind": "axe-review",
+        "scope": {
+          "page": "https://solvd.com/",
+          "state": "initial",
+          "element": ".wp-elements-b98e7840f1301df219b9f2b3a9eacbdf"
+        },
+        "source": {
+          "kind": "measured",
+          "name": "axe-core via @axe-core/playwright",
+          "reference": "https://dequeuniversity.com/rules/axe/4.14/color-contrast?application=playwright",
+          "observedAt": "2026-11-08T23:00:48.964Z"
+        },
+        "id": "ev_11f96f84b15fed99eed2a81e"
+      },
+      {
+        "agentId": "accessibility",
+        "kind": "axe-review",
+        "scope": {
+          "page": "https://solvd.com/",
+          "state": "initial",
+          "element": ".wp-elements-383fb2b8baab340ed1caf10ebaf77d88"
+        },
+        "source": {
+          "kind": "measured",
+          "name": "axe-core via @axe-core/playwright",
+          "reference": "https://dequeuniversity.com/rules/axe/4.14/color-contrast?application=playwright",
+          "observedAt": "2026-11-08T23:00:48.964Z"
+        },
+        "id": "ev_c89369c758feb36ad323505f"
+      },
+      {
+        "agentId": "accessibility",
+        "kind": "axe-review",
+        "scope": {
+          "page": "https://solvd.com/",
+          "state": "initial",
+          "element": ".wp-elements-eb331ebf7a9f5bf503f4b77c52734e9a"
+        },
+        "source": {
+          "kind": "measured",
+          "name": "axe-core via @axe-core/playwright",
+          "reference": "https://dequeuniversity.com/rules/axe/4.14/color-contrast?application=playwright",
+          "observedAt": "2026-11-08T23:00:48.964Z"
+        },
+        "id": "ev_4636d122ef8dd2b47dead9b7"
+      },
+      {
+        "agentId": "accessibility",
+        "kind": "axe-review",
+        "scope": {
+          "page": "https://solvd.com/",
+          "state": "initial",
+          "element": ".has-heading-1-font-size"
+        },
+        "source": {
+          "kind": "measured",
+          "name": "axe-core via @axe-core/playwright",
+          "reference": "https://dequeuniversity.com/rules/axe/4.14/color-contrast?application=playwright",
+          "observedAt": "2026-11-08T23:00:48.964Z"
+        },
+        "id": "ev_f49583c1da4f73d522576f20"
+      },
+      {
+        "agentId": "accessibility",
+        "kind": "axe-review",
+        "scope": {
+          "page": "https://solvd.com/",
+          "state": "initial",
+          "element": "video[preload=\"auto\"]"
+        },
+        "source": {
+          "kind": "measured",
+          "name": "axe-core via @axe-core/playwright",
+          "reference": "https://dequeuniversity.com/rules/axe/4.14/video-caption?application=playwright",
+          "observedAt": "2026-11-08T23:00:48.964Z"
+        },
+        "id": "ev_4430e4aba06c15a2ae4b77f2"
+      },
+      {
+        "agentId": "accessibility",
+        "kind": "axe-review",
+        "scope": {
+          "page": "https://solvd.com/",
+          "state": "initial",
+          "element": "video[preload=\"none\"]"
+        },
+        "source": {
+          "kind": "measured",
+          "name": "axe-core via @axe-core/playwright",
+          "reference": "https://dequeuniversity.com/rules/axe/4.14/video-caption?application=playwright",
+          "observedAt": "2026-11-08T23:00:48.964Z"
+        },
+        "id": "ev_5f6fd634831e2d0e910b2db3"
+      },
+      {
+        "agentId": "accessibility",
+        "kind": "axe-review",
+        "scope": {
+          "page": "https://solvd.com/",
+          "state": "initial",
+          "element": ".swiper-slide-visible > .wp-block-group-is-layout-constrained.is-layout-constrained.wp-block-group > .flexible-columns-wrapper.wp-block-bb-flexible-columns > .has-1-columns-sm.flexible-columns.has-2-columns > .order-sm-last.flexible-column > .flex-direction-column.flexible-column__content.wp-block-bb-flexible-column > .wp-block-cover.is-light.has-custom-content-position > .wp-block-cover__video-background.intrinsic-ignore.lazy"
+        },
+        "source": {
+          "kind": "measured",
+          "name": "axe-core via @axe-core/playwright",
+          "reference": "https://dequeuniversity.com/rules/axe/4.14/video-caption?application=playwright",
+          "observedAt": "2026-11-08T23:00:48.964Z"
+        },
+        "id": "ev_aab3bf71b8e1c9ed4fbf28c8"
+      },
+      {
+        "agentId": "accessibility",
+        "kind": "axe-review",
+        "scope": {
+          "page": "https://solvd.com/",
+          "state": "initial",
+          "element": ".swiper-slide-next > .wp-block-group-is-layout-constrained.is-layout-constrained.wp-block-group > .flexible-columns-wrapper.wp-block-bb-flexible-columns > .has-1-columns-sm.flexible-columns.has-2-columns > .order-sm-last.flexible-column > .flex-direction-column.flexible-column__content.wp-block-bb-flexible-column > .wp-block-cover.is-light.has-custom-content-position > .wp-block-cover__video-background.intrinsic-ignore.lazy"
+        },
+        "source": {
+          "kind": "measured",
+          "name": "axe-core via @axe-core/playwright",
+          "reference": "https://dequeuniversity.com/rules/axe/4.14/video-caption?application=playwright",
+          "observedAt": "2026-11-08T23:00:48.964Z"
+        },
+        "id": "ev_b86119f410ec9cb07f2352e5"
+      },
+      {
+        "agentId": "accessibility",
+        "kind": "axe-review",
+        "scope": {
+          "page": "https://solvd.com/",
+          "state": "initial",
+          "element": "div[aria-label=\"3 / 5\"] > .wp-block-group-is-layout-constrained.is-layout-constrained.wp-block-group > .flexible-columns-wrapper.wp-block-bb-flexible-columns > .has-1-columns-sm.flexible-columns.has-2-columns > .order-sm-last.flexible-column > .flex-direction-column.flexible-column__content.wp-block-bb-flexible-column > .wp-block-cover.is-light.has-custom-content-position > .wp-block-cover__video-background.intrinsic-ignore.lazy"
+        },
+        "source": {
+          "kind": "measured",
+          "name": "axe-core via @axe-core/playwright",
+          "reference": "https://dequeuniversity.com/rules/axe/4.14/video-caption?application=playwright",
+          "observedAt": "2026-11-08T23:00:48.964Z"
+        },
+        "id": "ev_311d618c7d4149aefaf09d43"
+      },
+      {
+        "agentId": "accessibility",
+        "kind": "axe-review",
+        "scope": {
+          "page": "https://solvd.com/",
+          "state": "initial",
+          "element": "div[aria-label=\"4 / 5\"] > .wp-block-group-is-layout-constrained.is-layout-constrained.wp-block-group > .flexible-columns-wrapper.wp-block-bb-flexible-columns > .has-1-columns-sm.flexible-columns.has-2-columns > .order-sm-last.flexible-column > .flex-direction-column.flexible-column__content.wp-block-bb-flexible-column > .wp-block-cover.is-light.has-custom-content-position > .wp-block-cover__video-background.intrinsic-ignore.lazy"
+        },
+        "source": {
+          "kind": "measured",
+          "name": "axe-core via @axe-core/playwright",
+          "reference": "https://dequeuniversity.com/rules/axe/4.14/video-caption?application=playwright",
+          "observedAt": "2026-11-08T23:00:48.964Z"
+        },
+        "id": "ev_b8853d30d5fd98a24b85ee83"
+      },
+      {
+        "agentId": "accessibility",
+        "kind": "axe-review",
+        "scope": {
+          "page": "https://solvd.com/",
+          "state": "initial",
+          "element": "div[aria-label=\"5 / 5\"] > .wp-block-group-is-layout-constrained.is-layout-constrained.wp-block-group > .flexible-columns-wrapper.wp-block-bb-flexible-columns > .has-1-columns-sm.flexible-columns.has-2-columns > .order-sm-last.flexible-column > .flex-direction-column.flexible-column__content.wp-block-bb-flexible-column > .wp-block-cover.is-light.has-custom-content-position > .wp-block-cover__video-background.intrinsic-ignore.lazy"
+        },
+        "source": {
+          "kind": "measured",
+          "name": "axe-core via @axe-core/playwright",
+          "reference": "https://dequeuniversity.com/rules/axe/4.14/video-caption?application=playwright",
+          "observedAt": "2026-11-08T23:00:48.964Z"
+        },
+        "id": "ev_340c2b6dc8662e36c790bfce"
+      }
+    ],
+    "findings": [
+      {
+        "agentId": "accessibility",
+        "scope": {
+          "page": "https://solvd.com/",
+          "state": "initial",
+          "element": ".notification-bar__close-btn"
+        },
+        "title": "Buttons must have discernible text",
+        "severity": "critical",
+        "evidenceIds": [
+          "ev_33da9e5ec8761635d23ab980"
+        ],
+        "coverageIds": [
+          "a11y:72535a8001835f8b06801f8a",
+          "a11y:b78fade97e4f485351c233b0",
+          "a11y:57e726a9752f8acaa435fbdd"
+        ],
+        "id": "fi_072bd466bf2780bae426cc35",
+        "group": 0
+      },
+      {
+        "agentId": "accessibility",
+        "scope": {
+          "page": "https://solvd.com/",
+          "state": "initial",
+          "element": "a[href$=\"services/\"]"
+        },
+        "title": "Elements must meet minimum color contrast ratio thresholds",
+        "severity": "high",
+        "evidenceIds": [
+          "ev_355cb825224c2b8e4c0de1f7"
+        ],
+        "coverageIds": [
+          "a11y:72535a8001835f8b06801f8a",
+          "a11y:b78fade97e4f485351c233b0",
+          "a11y:57e726a9752f8acaa435fbdd"
+        ],
+        "id": "fi_ac27f95202a8ced8a33c88a6",
+        "group": 1
+      },
+      {
+        "agentId": "accessibility",
+        "scope": {
+          "page": "https://solvd.com/",
+          "state": "initial",
+          "element": "#menu-item-1603 > a[href$=\"insights/\"]"
+        },
+        "title": "Elements must meet minimum color contrast ratio thresholds",
+        "severity": "high",
+        "evidenceIds": [
+          "ev_db5cc4545410a9e9053340bb"
+        ],
+        "coverageIds": [
+          "a11y:72535a8001835f8b06801f8a",
+          "a11y:b78fade97e4f485351c233b0",
+          "a11y:57e726a9752f8acaa435fbdd"
+        ],
+        "id": "fi_b89b2fc5f75d3e47ab793cbe",
+        "group": 1
+      },
+      {
+        "agentId": "accessibility",
+        "scope": {
+          "page": "https://solvd.com/",
+          "state": "initial",
+          "element": "#menu-item-486 > a[href$=\"about-us/\"]"
+        },
+        "title": "Elements must meet minimum color contrast ratio thresholds",
+        "severity": "high",
+        "evidenceIds": [
+          "ev_2b5de87662478c6d026b0c77"
+        ],
+        "coverageIds": [
+          "a11y:72535a8001835f8b06801f8a",
+          "a11y:b78fade97e4f485351c233b0",
+          "a11y:57e726a9752f8acaa435fbdd"
+        ],
+        "id": "fi_a4255bb8b0eab7fa4eac8450",
+        "group": 1
+      },
+      {
+        "agentId": "accessibility",
+        "scope": {
+          "page": "https://solvd.com/",
+          "state": "initial",
+          "element": ".footer-copyright-text > span"
+        },
+        "title": "Elements must meet minimum color contrast ratio thresholds",
+        "severity": "high",
+        "evidenceIds": [
+          "ev_338bedc5d441dd8f3fa422a0"
+        ],
+        "coverageIds": [
+          "a11y:72535a8001835f8b06801f8a",
+          "a11y:b78fade97e4f485351c233b0",
+          "a11y:57e726a9752f8acaa435fbdd"
+        ],
+        "id": "fi_ff9cd6386af9d4951b7e5318",
+        "group": 2
+      },
+      {
+        "agentId": "accessibility",
+        "scope": {
+          "page": "https://solvd.com/",
+          "state": "initial",
+          "element": "a[rel=\"privacy-policy\"]"
+        },
+        "title": "Elements must meet minimum color contrast ratio thresholds",
+        "severity": "high",
+        "evidenceIds": [
+          "ev_b52ed959204dfe08f625bdda"
+        ],
+        "coverageIds": [
+          "a11y:72535a8001835f8b06801f8a",
+          "a11y:b78fade97e4f485351c233b0",
+          "a11y:57e726a9752f8acaa435fbdd"
+        ],
+        "id": "fi_20dd36c93b0515f0822b7b6f",
+        "group": 2
+      },
+      {
+        "agentId": "accessibility",
+        "scope": {
+          "page": "https://solvd.com/",
+          "state": "initial",
+          "element": "#menu-item-2245 > a"
+        },
+        "title": "Elements must meet minimum color contrast ratio thresholds",
+        "severity": "high",
+        "evidenceIds": [
+          "ev_5eb802fcf295e3193b872a5d"
+        ],
+        "coverageIds": [
+          "a11y:72535a8001835f8b06801f8a",
+          "a11y:b78fade97e4f485351c233b0",
+          "a11y:57e726a9752f8acaa435fbdd"
+        ],
+        "id": "fi_1d541588a0c2b03a4905af9c",
+        "group": 2
+      },
+      {
+        "agentId": "accessibility",
+        "scope": {
+          "page": "https://solvd.com/",
+          "state": "initial",
+          "element": ".menu-footer-menu-1-container"
+        },
+        "title": "Landmarks should have a unique role or role/label/title (i.e. accessible name) combination",
+        "severity": "medium",
+        "evidenceIds": [
+          "ev_e5fe3add5e6d2b27573d2ae5"
+        ],
+        "coverageIds": [
+          "a11y:72535a8001835f8b06801f8a",
+          "a11y:b78fade97e4f485351c233b0",
+          "a11y:57e726a9752f8acaa435fbdd"
+        ],
+        "id": "fi_fa280807859d0b9f0e1fcf0e",
+        "group": 3
+      },
+      {
+        "agentId": "accessibility",
+        "scope": {
+          "page": "https://solvd.com/",
+          "state": "initial",
+          "element": ".skip-to-content-link"
+        },
+        "title": "All page content should be contained by landmarks",
+        "severity": "medium",
+        "evidenceIds": [
+          "ev_f8b0db90149b7816ec608441"
+        ],
+        "coverageIds": [
+          "a11y:72535a8001835f8b06801f8a",
+          "a11y:b78fade97e4f485351c233b0",
+          "a11y:57e726a9752f8acaa435fbdd"
+        ],
+        "id": "fi_c824666c0c910fd4f287e8ec",
+        "group": 4
+      },
+      {
+        "agentId": "accessibility",
+        "scope": {
+          "page": "https://solvd.com/",
+          "state": "initial",
+          "element": ".notification-bar__content"
+        },
+        "title": "All page content should be contained by landmarks",
+        "severity": "medium",
+        "evidenceIds": [
+          "ev_5aa278c5bcbfb8757dc2b3db"
+        ],
+        "coverageIds": [
+          "a11y:72535a8001835f8b06801f8a",
+          "a11y:b78fade97e4f485351c233b0",
+          "a11y:57e726a9752f8acaa435fbdd"
+        ],
+        "id": "fi_56ccf8029204ff60bb43123d",
+        "group": 4
+      },
+      {
+        "agentId": "accessibility",
+        "scope": {
+          "page": "https://solvd.com/",
+          "state": "initial",
+          "element": "#cmplz-message-1-optout"
+        },
+        "title": "Elements must meet minimum color contrast ratio thresholds",
+        "severity": "info",
+        "evidenceIds": [
+          "ev_d6b30d6371eb29818b441fd2"
+        ],
+        "coverageIds": [
+          "a11y:72535a8001835f8b06801f8a",
+          "a11y:b78fade97e4f485351c233b0",
+          "a11y:57e726a9752f8acaa435fbdd"
+        ],
+        "id": "fi_47baab70ec66fb97f505c6ba",
+        "group": 5
+      },
+      {
+        "agentId": "accessibility",
+        "scope": {
+          "page": "https://solvd.com/",
+          "state": "initial",
+          "element": ".notification-bar__text-item"
+        },
+        "title": "Elements must meet minimum color contrast ratio thresholds",
+        "severity": "info",
+        "evidenceIds": [
+          "ev_ee413b936a5f86d021458275"
+        ],
+        "coverageIds": [
+          "a11y:72535a8001835f8b06801f8a",
+          "a11y:b78fade97e4f485351c233b0",
+          "a11y:57e726a9752f8acaa435fbdd"
+        ],
+        "id": "fi_f179d9ead9689383130734e5",
+        "group": 6
+      },
+      {
+        "agentId": "accessibility",
+        "scope": {
+          "page": "https://solvd.com/",
+          "state": "initial",
+          "element": ".notification-bar__cta"
+        },
+        "title": "Elements must meet minimum color contrast ratio thresholds",
+        "severity": "info",
+        "evidenceIds": [
+          "ev_970b229fcd66ffd159f38100"
+        ],
+        "coverageIds": [
+          "a11y:72535a8001835f8b06801f8a",
+          "a11y:b78fade97e4f485351c233b0",
+          "a11y:57e726a9752f8acaa435fbdd"
+        ],
+        "id": "fi_c12438f622a6ac7ce097b54e",
+        "group": 6
+      },
+      {
+        "agentId": "accessibility",
+        "scope": {
+          "page": "https://solvd.com/",
+          "state": "initial",
+          "element": ".line-mask[aria-hidden=\"true\"]:nth-child(1) > .line[aria-hidden=\"true\"]"
+        },
+        "title": "Elements must meet minimum color contrast ratio thresholds",
+        "severity": "info",
+        "evidenceIds": [
+          "ev_ee102d2285be52fb7b0d8203"
+        ],
+        "coverageIds": [
+          "a11y:72535a8001835f8b06801f8a",
+          "a11y:b78fade97e4f485351c233b0",
+          "a11y:57e726a9752f8acaa435fbdd"
+        ],
+        "id": "fi_051367cc31390e48604fe374",
+        "group": 6
+      },
+      {
+        "agentId": "accessibility",
+        "scope": {
+          "page": "https://solvd.com/",
+          "state": "initial",
+          "element": ".line-mask[aria-hidden=\"true\"]:nth-child(2) > .line[aria-hidden=\"true\"]"
+        },
+        "title": "Elements must meet minimum color contrast ratio thresholds",
+        "severity": "info",
+        "evidenceIds": [
+          "ev_5c87fef859fcde52e701fbff"
+        ],
+        "coverageIds": [
+          "a11y:72535a8001835f8b06801f8a",
+          "a11y:b78fade97e4f485351c233b0",
+          "a11y:57e726a9752f8acaa435fbdd"
+        ],
+        "id": "fi_6ec6be8ab879d0a53e40cbbd",
+        "group": 6
+      },
+      {
+        "agentId": "accessibility",
+        "scope": {
+          "page": "https://solvd.com/",
+          "state": "initial",
+          "element": ".wp-elements-f44d45d4c3525539fa09db23bf8b8c67"
+        },
+        "title": "Elements must meet minimum color contrast ratio thresholds",
+        "severity": "info",
+        "evidenceIds": [
+          "ev_a39884adf936487bdc4165d0"
+        ],
+        "coverageIds": [
+          "a11y:72535a8001835f8b06801f8a",
+          "a11y:b78fade97e4f485351c233b0",
+          "a11y:57e726a9752f8acaa435fbdd"
+        ],
+        "id": "fi_c1b1b2de42712c03ed53a205",
+        "group": 6
+      },
+      {
+        "agentId": "accessibility",
+        "scope": {
+          "page": "https://solvd.com/",
+          "state": "initial",
+          "element": ".stat-item.wp-block-bb-stat-item:nth-child(1) > .stat-item__title"
+        },
+        "title": "Elements must meet minimum color contrast ratio thresholds",
+        "severity": "info",
+        "evidenceIds": [
+          "ev_f1d87d1edaa0bf571843891c"
+        ],
+        "coverageIds": [
+          "a11y:72535a8001835f8b06801f8a",
+          "a11y:b78fade97e4f485351c233b0",
+          "a11y:57e726a9752f8acaa435fbdd"
+        ],
+        "id": "fi_3cf1a0a0271c84e07ee1e798",
+        "group": 6
+      },
+      {
+        "agentId": "accessibility",
+        "scope": {
+          "page": "https://solvd.com/",
+          "state": "initial",
+          "element": ".stat-item.wp-block-bb-stat-item:nth-child(1) > .stat-item__description"
+        },
+        "title": "Elements must meet minimum color contrast ratio thresholds",
+        "severity": "info",
+        "evidenceIds": [
+          "ev_4a508ee46deb712cae74f226"
+        ],
+        "coverageIds": [
+          "a11y:72535a8001835f8b06801f8a",
+          "a11y:b78fade97e4f485351c233b0",
+          "a11y:57e726a9752f8acaa435fbdd"
+        ],
+        "id": "fi_eae413e68d59bf40e2ae3f17",
+        "group": 6
+      },
+      {
+        "agentId": "accessibility",
+        "scope": {
+          "page": "https://solvd.com/",
+          "state": "initial",
+          "element": ".stat-item.wp-block-bb-stat-item:nth-child(2) > .stat-item__title"
+        },
+        "title": "Elements must meet minimum color contrast ratio thresholds",
+        "severity": "info",
+        "evidenceIds": [
+          "ev_a98fb1b0d931afda8f731323"
+        ],
+        "coverageIds": [
+          "a11y:72535a8001835f8b06801f8a",
+          "a11y:b78fade97e4f485351c233b0",
+          "a11y:57e726a9752f8acaa435fbdd"
+        ],
+        "id": "fi_652b3234338c016b7a949833",
+        "group": 6
+      },
+      {
+        "agentId": "accessibility",
+        "scope": {
+          "page": "https://solvd.com/",
+          "state": "initial",
+          "element": ".stat-item.wp-block-bb-stat-item:nth-child(2) > .stat-item__description"
+        },
+        "title": "Elements must meet minimum color contrast ratio thresholds",
+        "severity": "info",
+        "evidenceIds": [
+          "ev_6f9a312271d83a8d7221083f"
+        ],
+        "coverageIds": [
+          "a11y:72535a8001835f8b06801f8a",
+          "a11y:b78fade97e4f485351c233b0",
+          "a11y:57e726a9752f8acaa435fbdd"
+        ],
+        "id": "fi_efbf1ffe4faa6ae65e0a5936",
+        "group": 6
+      },
+      {
+        "agentId": "accessibility",
+        "scope": {
+          "page": "https://solvd.com/",
+          "state": "initial",
+          "element": ".stat-item.wp-block-bb-stat-item:nth-child(3) > .stat-item__title"
+        },
+        "title": "Elements must meet minimum color contrast ratio thresholds",
+        "severity": "info",
+        "evidenceIds": [
+          "ev_53f1d11126a481d33d68d6db"
+        ],
+        "coverageIds": [
+          "a11y:72535a8001835f8b06801f8a",
+          "a11y:b78fade97e4f485351c233b0",
+          "a11y:57e726a9752f8acaa435fbdd"
+        ],
+        "id": "fi_07ab2fad0b8eccbaacd307ac",
+        "group": 6
+      },
+      {
+        "agentId": "accessibility",
+        "scope": {
+          "page": "https://solvd.com/",
+          "state": "initial",
+          "element": ".stat-item.wp-block-bb-stat-item:nth-child(3) > .stat-item__description"
+        },
+        "title": "Elements must meet minimum color contrast ratio thresholds",
+        "severity": "info",
+        "evidenceIds": [
+          "ev_1025aced2b4cf1f6e5dc381a"
+        ],
+        "coverageIds": [
+          "a11y:72535a8001835f8b06801f8a",
+          "a11y:b78fade97e4f485351c233b0",
+          "a11y:57e726a9752f8acaa435fbdd"
+        ],
+        "id": "fi_ddac21d273aca9198e176732",
+        "group": 6
+      },
+      {
+        "agentId": "accessibility",
+        "scope": {
+          "page": "https://solvd.com/",
+          "state": "initial",
+          "element": ".section-container.wp-block-bb-section-container:nth-child(2) > .container > .horizontal-alignment--left.wp-block-group-is-layout-constrained.is-layout-constrained > .is-style-eyebrow-text.wp-block-paragraph"
+        },
+        "title": "Elements must meet minimum color contrast ratio thresholds",
+        "severity": "info",
+        "evidenceIds": [
+          "ev_a93345b73af99489316f9edc"
+        ],
+        "coverageIds": [
+          "a11y:72535a8001835f8b06801f8a",
+          "a11y:b78fade97e4f485351c233b0",
+          "a11y:57e726a9752f8acaa435fbdd"
+        ],
+        "id": "fi_470bcd3ffa88a1f801160045",
+        "group": 6
+      },
+      {
+        "agentId": "accessibility",
+        "scope": {
+          "page": "https://solvd.com/",
+          "state": "initial",
+          "element": ".container > .horizontal-alignment--left.wp-block-group-is-layout-constrained.is-layout-constrained > .has-heading-3-font-size"
+        },
+        "title": "Elements must meet minimum color contrast ratio thresholds",
+        "severity": "info",
+        "evidenceIds": [
+          "ev_a1af381a9b2b999945cd6575"
+        ],
+        "coverageIds": [
+          "a11y:72535a8001835f8b06801f8a",
+          "a11y:b78fade97e4f485351c233b0",
+          "a11y:57e726a9752f8acaa435fbdd"
+        ],
+        "id": "fi_14833a344df1a3264e0887cf",
+        "group": 6
+      },
+      {
+        "agentId": "accessibility",
+        "scope": {
+          "page": "https://solvd.com/",
+          "state": "initial",
+          "element": ".wp-elements-aaf14918641f3407aea19f2d94d7d488 > .wp-block-paragraph"
+        },
+        "title": "Elements must meet minimum color contrast ratio thresholds",
+        "severity": "info",
+        "evidenceIds": [
+          "ev_ba24caad890651cf6620e145"
+        ],
+        "coverageIds": [
+          "a11y:72535a8001835f8b06801f8a",
+          "a11y:b78fade97e4f485351c233b0",
+          "a11y:57e726a9752f8acaa435fbdd"
+        ],
+        "id": "fi_7073c049bbc0a24001cb93b7",
+        "group": 6
+      },
+      {
+        "agentId": "accessibility",
+        "scope": {
+          "page": "https://solvd.com/",
+          "state": "initial",
+          "element": ".wp-elements-f1d92117a98de6ed4772d06a901c553a"
+        },
+        "title": "Elements must meet minimum color contrast ratio thresholds",
+        "severity": "info",
+        "evidenceIds": [
+          "ev_2b7c5a32336330ca0b4b59d3"
+        ],
+        "coverageIds": [
+          "a11y:72535a8001835f8b06801f8a",
+          "a11y:b78fade97e4f485351c233b0",
+          "a11y:57e726a9752f8acaa435fbdd"
+        ],
+        "id": "fi_0a2e115837d7ad55ad943f3f",
+        "group": 6
+      },
+      {
+        "agentId": "accessibility",
+        "scope": {
+          "page": "https://solvd.com/",
+          "state": "initial",
+          "element": ".is-style-square-bullets > li:nth-child(1)"
+        },
+        "title": "Elements must meet minimum color contrast ratio thresholds",
+        "severity": "info",
+        "evidenceIds": [
+          "ev_68309cb8a74a68ebeba4f4ea"
+        ],
+        "coverageIds": [
+          "a11y:72535a8001835f8b06801f8a",
+          "a11y:b78fade97e4f485351c233b0",
+          "a11y:57e726a9752f8acaa435fbdd"
+        ],
+        "id": "fi_dafd1e5b7126e69bda2eb6ad",
+        "group": 6
+      },
+      {
+        "agentId": "accessibility",
+        "scope": {
+          "page": "https://solvd.com/",
+          "state": "initial",
+          "element": ".is-style-square-bullets > li:nth-child(2)"
+        },
+        "title": "Elements must meet minimum color contrast ratio thresholds",
+        "severity": "info",
+        "evidenceIds": [
+          "ev_c4ba05c4a54285e577b0dccb"
+        ],
+        "coverageIds": [
+          "a11y:72535a8001835f8b06801f8a",
+          "a11y:b78fade97e4f485351c233b0",
+          "a11y:57e726a9752f8acaa435fbdd"
+        ],
+        "id": "fi_4f967ee99400a1a59ef35a69",
+        "group": 6
+      },
+      {
+        "agentId": "accessibility",
+        "scope": {
+          "page": "https://solvd.com/",
+          "state": "initial",
+          "element": ".is-style-square-bullets > li:nth-child(3)"
+        },
+        "title": "Elements must meet minimum color contrast ratio thresholds",
+        "severity": "info",
+        "evidenceIds": [
+          "ev_eb7b541572c8b281817df5aa"
+        ],
+        "coverageIds": [
+          "a11y:72535a8001835f8b06801f8a",
+          "a11y:b78fade97e4f485351c233b0",
+          "a11y:57e726a9752f8acaa435fbdd"
+        ],
+        "id": "fi_267503b5673bd2894b80e3a8",
+        "group": 6
+      },
+      {
+        "agentId": "accessibility",
+        "scope": {
+          "page": "https://solvd.com/",
+          "state": "initial",
+          "element": ".is-style-square-bullets > li:nth-child(4)"
+        },
+        "title": "Elements must meet minimum color contrast ratio thresholds",
+        "severity": "info",
+        "evidenceIds": [
+          "ev_65dd089219bf7ee6b5122ee1"
+        ],
+        "coverageIds": [
+          "a11y:72535a8001835f8b06801f8a",
+          "a11y:b78fade97e4f485351c233b0",
+          "a11y:57e726a9752f8acaa435fbdd"
+        ],
+        "id": "fi_a1402bb6179326472619c234",
+        "group": 6
+      },
+      {
+        "agentId": "accessibility",
+        "scope": {
+          "page": "https://solvd.com/",
+          "state": "initial",
+          "element": ".has-heading-4-font-size > .wp-block-paragraph:nth-child(1)"
+        },
+        "title": "Elements must meet minimum color contrast ratio thresholds",
+        "severity": "info",
+        "evidenceIds": [
+          "ev_753e9f8d38cffaf6ad741bdd"
+        ],
+        "coverageIds": [
+          "a11y:72535a8001835f8b06801f8a",
+          "a11y:b78fade97e4f485351c233b0",
+          "a11y:57e726a9752f8acaa435fbdd"
+        ],
+        "id": "fi_669309f422b6cc90fbd55b82",
+        "group": 6
+      },
+      {
+        "agentId": "accessibility",
+        "scope": {
+          "page": "https://solvd.com/",
+          "state": "initial",
+          "element": ".bb-text-bg-highlight"
+        },
+        "title": "Elements must meet minimum color contrast ratio thresholds",
+        "severity": "info",
+        "evidenceIds": [
+          "ev_95f437dd8a26e8f43b81a7b3"
+        ],
+        "coverageIds": [
+          "a11y:72535a8001835f8b06801f8a",
+          "a11y:b78fade97e4f485351c233b0",
+          "a11y:57e726a9752f8acaa435fbdd"
+        ],
+        "id": "fi_a10802872b56e59013c37697",
+        "group": 6
+      },
+      {
+        "agentId": "accessibility",
+        "scope": {
+          "page": "https://solvd.com/",
+          "state": "initial",
+          "element": ".wp-container-core-group-is-layout-e025687a > .flexible-columns-wrapper.wp-block-bb-flexible-columns > .has-1-columns-md.flexible-columns.has-2-columns > .has-custom-width-set.full-width-md.full-width-sm > .flexible-column__content.wp-block-bb-flexible-column > .wp-block-paragraph"
+        },
+        "title": "Elements must meet minimum color contrast ratio thresholds",
+        "severity": "info",
+        "evidenceIds": [
+          "ev_cdd1c2e0019d61ab33fc6065"
+        ],
+        "coverageIds": [
+          "a11y:72535a8001835f8b06801f8a",
+          "a11y:b78fade97e4f485351c233b0",
+          "a11y:57e726a9752f8acaa435fbdd"
+        ],
+        "id": "fi_957a3f04c05a293fc037a61e",
+        "group": 6
+      },
+      {
+        "agentId": "accessibility",
+        "scope": {
+          "page": "https://solvd.com/",
+          "state": "initial",
+          "element": ".section-container.wp-block-bb-section-container.has-green-100-background-color > .container > .horizontal-alignment--left.wp-block-group-is-layout-constrained.is-layout-constrained > .is-style-eyebrow-text.wp-block-paragraph"
+        },
+        "title": "Elements must meet minimum color contrast ratio thresholds",
+        "severity": "info",
+        "evidenceIds": [
+          "ev_8f60ecae034b1bf0a0d7d918"
+        ],
+        "coverageIds": [
+          "a11y:72535a8001835f8b06801f8a",
+          "a11y:b78fade97e4f485351c233b0",
+          "a11y:57e726a9752f8acaa435fbdd"
+        ],
+        "id": "fi_b807ae37bdf8d4580ab4e8c3",
+        "group": 6
+      },
+      {
+        "agentId": "accessibility",
+        "scope": {
+          "page": "https://solvd.com/",
+          "state": "initial",
+          "element": ".section-container.wp-block-bb-section-container.has-green-100-background-color > .container > .horizontal-alignment--left.wp-block-group-is-layout-constrained.is-layout-constrained > h2"
+        },
+        "title": "Elements must meet minimum color contrast ratio thresholds",
+        "severity": "info",
+        "evidenceIds": [
+          "ev_3a5d1f891b2a1f912a4fe279"
+        ],
+        "coverageIds": [
+          "a11y:72535a8001835f8b06801f8a",
+          "a11y:b78fade97e4f485351c233b0",
+          "a11y:57e726a9752f8acaa435fbdd"
+        ],
+        "id": "fi_05e310c89905055e537d6e80",
+        "group": 6
+      },
+      {
+        "agentId": "accessibility",
+        "scope": {
+          "page": "https://solvd.com/",
+          "state": "initial",
+          "element": ".swiper-slide-visible > .wp-block-group-is-layout-constrained.is-layout-constrained.wp-block-group > .flexible-columns-wrapper.wp-block-bb-flexible-columns > .has-1-columns-sm.flexible-columns.has-2-columns > .order-sm-last.flexible-column > .flex-direction-column.flexible-column__content.wp-block-bb-flexible-column > .wp-block-cover.is-light.has-custom-content-position > .wp-block-cover__inner-container.wp-block-cover-is-layout-constrained.is-layout-constrained > .link-card.hover-effect--darken-overlay.wp-block-bb-link-card > .link-card__content > .has-secondary-font-family.has-heading-5-font-size.wp-block-paragraph"
+        },
+        "title": "Elements must meet minimum color contrast ratio thresholds",
+        "severity": "info",
+        "evidenceIds": [
+          "ev_e4a38de1298cc3e277e1e90c"
+        ],
+        "coverageIds": [
+          "a11y:72535a8001835f8b06801f8a",
+          "a11y:b78fade97e4f485351c233b0",
+          "a11y:57e726a9752f8acaa435fbdd"
+        ],
+        "id": "fi_c6c6ef2db5876eea122729a9",
+        "group": 6
+      },
+      {
+        "agentId": "accessibility",
+        "scope": {
+          "page": "https://solvd.com/",
+          "state": "initial",
+          "element": ".swiper-slide-visible > .wp-block-group-is-layout-constrained.is-layout-constrained.wp-block-group > .flexible-columns-wrapper.wp-block-bb-flexible-columns > .has-1-columns-sm.flexible-columns.has-2-columns > .order-sm-last.flexible-column > .flex-direction-column.flexible-column__content.wp-block-bb-flexible-column > .wp-block-cover.is-light.has-custom-content-position > .wp-block-cover__inner-container.wp-block-cover-is-layout-constrained.is-layout-constrained > .link-card.hover-effect--darken-overlay.wp-block-bb-link-card > .link-card__cta.btn--link.btn"
+        },
+        "title": "Elements must meet minimum color contrast ratio thresholds",
+        "severity": "info",
+        "evidenceIds": [
+          "ev_193369dca63db80471555175"
+        ],
+        "coverageIds": [
+          "a11y:72535a8001835f8b06801f8a",
+          "a11y:b78fade97e4f485351c233b0",
+          "a11y:57e726a9752f8acaa435fbdd"
+        ],
+        "id": "fi_1caeaa45df8f50e0e6018b25",
+        "group": 6
+      },
+      {
+        "agentId": "accessibility",
+        "scope": {
+          "page": "https://solvd.com/",
+          "state": "initial",
+          "element": ".swiper-slide-visible > .wp-block-group-is-layout-constrained.is-layout-constrained.wp-block-group > .flexible-columns-wrapper.wp-block-bb-flexible-columns > .has-1-columns-sm.flexible-columns.has-2-columns > .flexible-column:nth-child(2) > .flex-direction-column.flexible-column__content.wp-block-bb-flexible-column > .is-content-justification-stretch.wp-container-core-group-is-layout-10dd94be.horizontal-alignment--left > h3"
+        },
+        "title": "Elements must meet minimum color contrast ratio thresholds",
+        "severity": "info",
+        "evidenceIds": [
+          "ev_862b500f8532d03f9bae259b"
+        ],
+        "coverageIds": [
+          "a11y:72535a8001835f8b06801f8a",
+          "a11y:b78fade97e4f485351c233b0",
+          "a11y:57e726a9752f8acaa435fbdd"
+        ],
+        "id": "fi_884c75a1a7c337a64fe53f7f",
+        "group": 6
+      },
+      {
+        "agentId": "accessibility",
+        "scope": {
+          "page": "https://solvd.com/",
+          "state": "initial",
+          "element": ".wp-elements-6d5f860b34ed92814865586fbd9d6d8a > .wp-block-paragraph"
+        },
+        "title": "Elements must meet minimum color contrast ratio thresholds",
+        "severity": "info",
+        "evidenceIds": [
+          "ev_12b0f5d32805e8fcb7c9c5ff"
+        ],
+        "coverageIds": [
+          "a11y:72535a8001835f8b06801f8a",
+          "a11y:b78fade97e4f485351c233b0",
+          "a11y:57e726a9752f8acaa435fbdd"
+        ],
+        "id": "fi_6ab89f8f9072774a70356db9",
+        "group": 6
+      },
+      {
+        "agentId": "accessibility",
+        "scope": {
+          "page": "https://solvd.com/",
+          "state": "initial",
+          "element": ".swiper-slide-visible > .wp-block-group-is-layout-constrained.is-layout-constrained.wp-block-group > .flexible-columns-wrapper.wp-block-bb-flexible-columns > .has-1-columns-sm.flexible-columns.has-2-columns > .flexible-column:nth-child(2) > .flex-direction-column.flexible-column__content.wp-block-bb-flexible-column > .is-content-justification-stretch.wp-container-core-group-is-layout-10dd94be.horizontal-alignment--left > .wp-block-group-is-layout-constrained.is-layout-constrained.wp-block-group:nth-child(3) > .has-medium-font-size.wp-block-paragraph"
+        },
+        "title": "Elements must meet minimum color contrast ratio thresholds",
+        "severity": "info",
+        "evidenceIds": [
+          "ev_941097bb09f0c88cccd75a8b"
+        ],
+        "coverageIds": [
+          "a11y:72535a8001835f8b06801f8a",
+          "a11y:b78fade97e4f485351c233b0",
+          "a11y:57e726a9752f8acaa435fbdd"
+        ],
+        "id": "fi_3441ad75e1ad579c400f1e13",
+        "group": 6
+      },
+      {
+        "agentId": "accessibility",
+        "scope": {
+          "page": "https://solvd.com/",
+          "state": "initial",
+          "element": ".swiper-slide-visible > .wp-block-group-is-layout-constrained.is-layout-constrained.wp-block-group > .flexible-columns-wrapper.wp-block-bb-flexible-columns > .has-1-columns-sm.flexible-columns.has-2-columns > .flexible-column:nth-child(2) > .flex-direction-column.flexible-column__content.wp-block-bb-flexible-column > .is-content-justification-stretch.wp-container-core-group-is-layout-10dd94be.horizontal-alignment--left > .wp-block-group-is-layout-constrained.is-layout-constrained.wp-block-group:nth-child(3) > .is-style-checkmark-bullets.wp-block-list.has-border > li:nth-child(1)"
+        },
+        "title": "Elements must meet minimum color contrast ratio thresholds",
+        "severity": "info",
+        "evidenceIds": [
+          "ev_8f4485f525f7cf27fe166773"
+        ],
+        "coverageIds": [
+          "a11y:72535a8001835f8b06801f8a",
+          "a11y:b78fade97e4f485351c233b0",
+          "a11y:57e726a9752f8acaa435fbdd"
+        ],
+        "id": "fi_55427411cd8bd072fd1d4423",
+        "group": 6
+      },
+      {
+        "agentId": "accessibility",
+        "scope": {
+          "page": "https://solvd.com/",
+          "state": "initial",
+          "element": ".swiper-slide-visible > .wp-block-group-is-layout-constrained.is-layout-constrained.wp-block-group > .flexible-columns-wrapper.wp-block-bb-flexible-columns > .has-1-columns-sm.flexible-columns.has-2-columns > .flexible-column:nth-child(2) > .flex-direction-column.flexible-column__content.wp-block-bb-flexible-column > .is-content-justification-stretch.wp-container-core-group-is-layout-10dd94be.horizontal-alignment--left > .wp-block-group-is-layout-constrained.is-layout-constrained.wp-block-group:nth-child(3) > .is-style-checkmark-bullets.wp-block-list.has-border > li:nth-child(2)"
+        },
+        "title": "Elements must meet minimum color contrast ratio thresholds",
+        "severity": "info",
+        "evidenceIds": [
+          "ev_b4acc8d42f81379ed755ccdd"
+        ],
+        "coverageIds": [
+          "a11y:72535a8001835f8b06801f8a",
+          "a11y:b78fade97e4f485351c233b0",
+          "a11y:57e726a9752f8acaa435fbdd"
+        ],
+        "id": "fi_ea567fbe7672f57b294c02f4",
+        "group": 6
+      },
+      {
+        "agentId": "accessibility",
+        "scope": {
+          "page": "https://solvd.com/",
+          "state": "initial",
+          "element": ".swiper-slide-visible > .wp-block-group-is-layout-constrained.is-layout-constrained.wp-block-group > .flexible-columns-wrapper.wp-block-bb-flexible-columns > .has-1-columns-sm.flexible-columns.has-2-columns > .flexible-column:nth-child(2) > .flex-direction-column.flexible-column__content.wp-block-bb-flexible-column > .is-content-justification-stretch.wp-container-core-group-is-layout-10dd94be.horizontal-alignment--left > .wp-block-group-is-layout-constrained.is-layout-constrained.wp-block-group:nth-child(3) > .is-style-checkmark-bullets.wp-block-list.has-border > li:nth-child(3)"
+        },
+        "title": "Elements must meet minimum color contrast ratio thresholds",
+        "severity": "info",
+        "evidenceIds": [
+          "ev_9bd05b0dd04b04e22383135f"
+        ],
+        "coverageIds": [
+          "a11y:72535a8001835f8b06801f8a",
+          "a11y:b78fade97e4f485351c233b0",
+          "a11y:57e726a9752f8acaa435fbdd"
+        ],
+        "id": "fi_575ee15fb1477a5a11b87499",
+        "group": 6
+      },
+      {
+        "agentId": "accessibility",
+        "scope": {
+          "page": "https://solvd.com/",
+          "state": "initial",
+          "element": ".section-with-horizontal-scroll__header > .horizontal-alignment--left.wp-block-group-is-layout-constrained.is-layout-constrained > .is-style-eyebrow-text.wp-block-paragraph"
+        },
+        "title": "Elements must meet minimum color contrast ratio thresholds",
+        "severity": "info",
+        "evidenceIds": [
+          "ev_b7811e1be827f1958fc1a11f"
+        ],
+        "coverageIds": [
+          "a11y:72535a8001835f8b06801f8a",
+          "a11y:b78fade97e4f485351c233b0",
+          "a11y:57e726a9752f8acaa435fbdd"
+        ],
+        "id": "fi_8397058acee5ede95f54cf3c",
+        "group": 6
+      },
+      {
+        "agentId": "accessibility",
+        "scope": {
+          "page": "https://solvd.com/",
+          "state": "initial",
+          "element": ".section-with-horizontal-scroll__header > .horizontal-alignment--left.wp-block-group-is-layout-constrained.is-layout-constrained > h2"
+        },
+        "title": "Elements must meet minimum color contrast ratio thresholds",
+        "severity": "info",
+        "evidenceIds": [
+          "ev_04121eb6cd0128ea33d15abd"
+        ],
+        "coverageIds": [
+          "a11y:72535a8001835f8b06801f8a",
+          "a11y:b78fade97e4f485351c233b0",
+          "a11y:57e726a9752f8acaa435fbdd"
+        ],
+        "id": "fi_7cbb61dbf7ffe00f650ea6ed",
+        "group": 6
+      },
+      {
+        "agentId": "accessibility",
+        "scope": {
+          "page": "https://solvd.com/",
+          "state": "initial",
+          "element": ".horizontal-scroll-item.wp-block-bb-horizontal-scroll-item.wp-container-bb-horizontal-scroll-item-is-layout-6a093f15:nth-child(1) > .wp-container-content-9cfa9a5a.wp-container-core-group-is-layout-21e01eef.has-green-100-background-color > h3"
+        },
+        "title": "Elements must meet minimum color contrast ratio thresholds",
+        "severity": "info",
+        "evidenceIds": [
+          "ev_df994526d97aa06426efb337"
+        ],
+        "coverageIds": [
+          "a11y:72535a8001835f8b06801f8a",
+          "a11y:b78fade97e4f485351c233b0",
+          "a11y:57e726a9752f8acaa435fbdd"
+        ],
+        "id": "fi_72f3d0130b79bb325e4d8aac",
+        "group": 6
+      },
+      {
+        "agentId": "accessibility",
+        "scope": {
+          "page": "https://solvd.com/",
+          "state": "initial",
+          "element": ".wp-elements-185707c8b2376918ada87559f1a9c721"
+        },
+        "title": "Elements must meet minimum color contrast ratio thresholds",
+        "severity": "info",
+        "evidenceIds": [
+          "ev_3805b60a9420ea1296d34148"
+        ],
+        "coverageIds": [
+          "a11y:72535a8001835f8b06801f8a",
+          "a11y:b78fade97e4f485351c233b0",
+          "a11y:57e726a9752f8acaa435fbdd"
+        ],
+        "id": "fi_09828b6b8ff457fd03b15bbc",
+        "group": 6
+      },
+      {
+        "agentId": "accessibility",
+        "scope": {
+          "page": "https://solvd.com/",
+          "state": "initial",
+          "element": ".horizontal-scroll-item.wp-block-bb-horizontal-scroll-item.wp-container-bb-horizontal-scroll-item-is-layout-6a093f15:nth-child(1) > .wp-container-content-9cfa9a5a.wp-container-core-group-is-layout-21e01eef.has-green-100-background-color > .wp-block-buttons.wp-block-buttons-is-layout-flex.is-layout-flex > .is-style-link.wp-block-button > .wp-block-button__link.wp-element-button"
+        },
+        "title": "Elements must meet minimum color contrast ratio thresholds",
+        "severity": "info",
+        "evidenceIds": [
+          "ev_ab634634c4130ad33b1caa95"
+        ],
+        "coverageIds": [
+          "a11y:72535a8001835f8b06801f8a",
+          "a11y:b78fade97e4f485351c233b0",
+          "a11y:57e726a9752f8acaa435fbdd"
+        ],
+        "id": "fi_5fa25d7565bd8ad7e6e26891",
+        "group": 6
+      },
+      {
+        "agentId": "accessibility",
+        "scope": {
+          "page": "https://solvd.com/",
+          "state": "initial",
+          "element": ".horizontal-scroll-item.wp-block-bb-horizontal-scroll-item.wp-container-bb-horizontal-scroll-item-is-layout-6a093f15:nth-child(2) > .wp-container-content-9cfa9a5a.wp-container-core-group-is-layout-21e01eef.has-green-100-background-color > h3"
+        },
+        "title": "Elements must meet minimum color contrast ratio thresholds",
+        "severity": "info",
+        "evidenceIds": [
+          "ev_ae635da5ffae931cc360d705"
+        ],
+        "coverageIds": [
+          "a11y:72535a8001835f8b06801f8a",
+          "a11y:b78fade97e4f485351c233b0",
+          "a11y:57e726a9752f8acaa435fbdd"
+        ],
+        "id": "fi_28b3494f83f1374fd2036934",
+        "group": 6
+      },
+      {
+        "agentId": "accessibility",
+        "scope": {
+          "page": "https://solvd.com/",
+          "state": "initial",
+          "element": ".wp-elements-a3628ddd897ce8dbc2c2e14348baa67d"
+        },
+        "title": "Elements must meet minimum color contrast ratio thresholds",
+        "severity": "info",
+        "evidenceIds": [
+          "ev_6eb5c9e964f885ebfbf7fd73"
+        ],
+        "coverageIds": [
+          "a11y:72535a8001835f8b06801f8a",
+          "a11y:b78fade97e4f485351c233b0",
+          "a11y:57e726a9752f8acaa435fbdd"
+        ],
+        "id": "fi_c617c71c2cc15f99e46a4a26",
+        "group": 6
+      },
+      {
+        "agentId": "accessibility",
+        "scope": {
+          "page": "https://solvd.com/",
+          "state": "initial",
+          "element": ".horizontal-scroll-item.wp-block-bb-horizontal-scroll-item.wp-container-bb-horizontal-scroll-item-is-layout-6a093f15:nth-child(2) > .wp-container-content-9cfa9a5a.wp-container-core-group-is-layout-21e01eef.has-green-100-background-color > .wp-block-buttons.wp-block-buttons-is-layout-flex.is-layout-flex > .is-style-link.wp-block-button > .wp-block-button__link.wp-element-button"
+        },
+        "title": "Elements must meet minimum color contrast ratio thresholds",
+        "severity": "info",
+        "evidenceIds": [
+          "ev_eb8a9f59e0101166dd9508a3"
+        ],
+        "coverageIds": [
+          "a11y:72535a8001835f8b06801f8a",
+          "a11y:b78fade97e4f485351c233b0",
+          "a11y:57e726a9752f8acaa435fbdd"
+        ],
+        "id": "fi_81434f442804d6eccd4cd3ad",
+        "group": 6
+      },
+      {
+        "agentId": "accessibility",
+        "scope": {
+          "page": "https://solvd.com/",
+          "state": "initial",
+          "element": ".horizontal-scroll-item.wp-block-bb-horizontal-scroll-item.wp-container-bb-horizontal-scroll-item-is-layout-6a093f15:nth-child(3) > .wp-container-content-9cfa9a5a.wp-container-core-group-is-layout-21e01eef.has-green-100-background-color > h3"
+        },
+        "title": "Elements must meet minimum color contrast ratio thresholds",
+        "severity": "info",
+        "evidenceIds": [
+          "ev_a15718540a4754b721c7af4b"
+        ],
+        "coverageIds": [
+          "a11y:72535a8001835f8b06801f8a",
+          "a11y:b78fade97e4f485351c233b0",
+          "a11y:57e726a9752f8acaa435fbdd"
+        ],
+        "id": "fi_a6536ca4f4cd7b0ac1f3c84d",
+        "group": 6
+      },
+      {
+        "agentId": "accessibility",
+        "scope": {
+          "page": "https://solvd.com/",
+          "state": "initial",
+          "element": ".wp-elements-df7685cb17a8f4264a9246ea8a69552b"
+        },
+        "title": "Elements must meet minimum color contrast ratio thresholds",
+        "severity": "info",
+        "evidenceIds": [
+          "ev_ba2dfd055c4d28cf02bdb140"
+        ],
+        "coverageIds": [
+          "a11y:72535a8001835f8b06801f8a",
+          "a11y:b78fade97e4f485351c233b0",
+          "a11y:57e726a9752f8acaa435fbdd"
+        ],
+        "id": "fi_76bab1950b36896388289781",
+        "group": 6
+      },
+      {
+        "agentId": "accessibility",
+        "scope": {
+          "page": "https://solvd.com/",
+          "state": "initial",
+          "element": ".horizontal-scroll-item.wp-block-bb-horizontal-scroll-item.wp-container-bb-horizontal-scroll-item-is-layout-6a093f15:nth-child(3) > .wp-container-content-9cfa9a5a.wp-container-core-group-is-layout-21e01eef.has-green-100-background-color > .wp-block-buttons.wp-block-buttons-is-layout-flex.is-layout-flex > .is-style-link.wp-block-button > .wp-block-button__link.wp-element-button"
+        },
+        "title": "Elements must meet minimum color contrast ratio thresholds",
+        "severity": "info",
+        "evidenceIds": [
+          "ev_41c977c3b044fc092fe701d7"
+        ],
+        "coverageIds": [
+          "a11y:72535a8001835f8b06801f8a",
+          "a11y:b78fade97e4f485351c233b0",
+          "a11y:57e726a9752f8acaa435fbdd"
+        ],
+        "id": "fi_1ac11f07cb21802b5500c6a3",
+        "group": 6
+      },
+      {
+        "agentId": "accessibility",
+        "scope": {
+          "page": "https://solvd.com/",
+          "state": "initial",
+          "element": ".wp-block-group-is-layout-constrained.is-layout-constrained.wp-block-group:nth-child(1) > .flexible-columns-wrapper.wp-block-bb-flexible-columns > .has-1-columns-md.flexible-columns.has-2-columns > .has-custom-width-set.full-width-md.full-width-sm:nth-child(1) > .flexible-column__content.wp-block-bb-flexible-column > .is-style-eyebrow-text.wp-block-paragraph"
+        },
+        "title": "Elements must meet minimum color contrast ratio thresholds",
+        "severity": "info",
+        "evidenceIds": [
+          "ev_297a991d26a1ca33e2cf387a"
+        ],
+        "coverageIds": [
+          "a11y:72535a8001835f8b06801f8a",
+          "a11y:b78fade97e4f485351c233b0",
+          "a11y:57e726a9752f8acaa435fbdd"
+        ],
+        "id": "fi_912c00b0c121279582335c3e",
+        "group": 6
+      },
+      {
+        "agentId": "accessibility",
+        "scope": {
+          "page": "https://solvd.com/",
+          "state": "initial",
+          "element": ".wp-block-group-is-layout-constrained.is-layout-constrained.wp-block-group:nth-child(1) > .flexible-columns-wrapper.wp-block-bb-flexible-columns > .has-1-columns-md.flexible-columns.has-2-columns > .has-custom-width-set.full-width-md.full-width-sm:nth-child(2) > .flexible-column__content.wp-block-bb-flexible-column > .horizontal-alignment--left.wp-block-group-is-layout-constrained.is-layout-constrained > .has-heading-3-font-size"
+        },
+        "title": "Elements must meet minimum color contrast ratio thresholds",
+        "severity": "info",
+        "evidenceIds": [
+          "ev_ad44e8befc85bb625bd39052"
+        ],
+        "coverageIds": [
+          "a11y:72535a8001835f8b06801f8a",
+          "a11y:b78fade97e4f485351c233b0",
+          "a11y:57e726a9752f8acaa435fbdd"
+        ],
+        "id": "fi_9b6cba4212132fb5cc18e426",
+        "group": 6
+      },
+      {
+        "agentId": "accessibility",
+        "scope": {
+          "page": "https://solvd.com/",
+          "state": "initial",
+          "element": ".has-gray-100-color > .wp-block-paragraph"
+        },
+        "title": "Elements must meet minimum color contrast ratio thresholds",
+        "severity": "info",
+        "evidenceIds": [
+          "ev_43226648ce44f612b58e9633"
+        ],
+        "coverageIds": [
+          "a11y:72535a8001835f8b06801f8a",
+          "a11y:b78fade97e4f485351c233b0",
+          "a11y:57e726a9752f8acaa435fbdd"
+        ],
+        "id": "fi_aebe23381e4376acdf98ba30",
+        "group": 6
+      },
+      {
+        "agentId": "accessibility",
+        "scope": {
+          "page": "https://solvd.com/",
+          "state": "initial",
+          "element": ".wp-block-group-is-layout-constrained.is-layout-constrained.wp-block-group:nth-child(3) > .flexible-columns-wrapper.wp-block-bb-flexible-columns > .has-1-columns-md.flexible-columns.has-2-columns > .has-custom-width-set.full-width-md.full-width-sm:nth-child(1) > .flexible-column__content.wp-block-bb-flexible-column > .is-style-eyebrow-text.wp-block-paragraph"
+        },
+        "title": "Elements must meet minimum color contrast ratio thresholds",
+        "severity": "info",
+        "evidenceIds": [
+          "ev_251cb582f425730ea0311eed"
+        ],
+        "coverageIds": [
+          "a11y:72535a8001835f8b06801f8a",
+          "a11y:b78fade97e4f485351c233b0",
+          "a11y:57e726a9752f8acaa435fbdd"
+        ],
+        "id": "fi_9926c3b88b08414782dca57b",
+        "group": 6
+      },
+      {
+        "agentId": "accessibility",
+        "scope": {
+          "page": "https://solvd.com/",
+          "state": "initial",
+          "element": ".wp-block-group-is-layout-constrained.is-layout-constrained.wp-block-group:nth-child(3) > .flexible-columns-wrapper.wp-block-bb-flexible-columns > .has-1-columns-md.flexible-columns.has-2-columns > .has-custom-width-set.full-width-md.full-width-sm:nth-child(2) > .flexible-column__content.wp-block-bb-flexible-column > .horizontal-alignment--left.wp-block-group-is-layout-constrained.is-layout-constrained > .has-heading-3-font-size"
+        },
+        "title": "Elements must meet minimum color contrast ratio thresholds",
+        "severity": "info",
+        "evidenceIds": [
+          "ev_24c475eefaa6616cbd8eabf5"
+        ],
+        "coverageIds": [
+          "a11y:72535a8001835f8b06801f8a",
+          "a11y:b78fade97e4f485351c233b0",
+          "a11y:57e726a9752f8acaa435fbdd"
+        ],
+        "id": "fi_cce9bb1a7b227519eecac4c8",
+        "group": 6
+      },
+      {
+        "agentId": "accessibility",
+        "scope": {
+          "page": "https://solvd.com/",
+          "state": "initial",
+          "element": ".has-white-background-color"
+        },
+        "title": "Elements must meet minimum color contrast ratio thresholds",
+        "severity": "info",
+        "evidenceIds": [
+          "ev_aa8f74e61def23005d7fbdb2"
+        ],
+        "coverageIds": [
+          "a11y:72535a8001835f8b06801f8a",
+          "a11y:b78fade97e4f485351c233b0",
+          "a11y:57e726a9752f8acaa435fbdd"
+        ],
+        "id": "fi_65a4c0e1c82d121c68410486",
+        "group": 6
+      },
+      {
+        "agentId": "accessibility",
+        "scope": {
+          "page": "https://solvd.com/",
+          "state": "initial",
+          "element": ".wp-elements-c6d4b27e2c2b379f09f425dbf3db771a"
+        },
+        "title": "Elements must meet minimum color contrast ratio thresholds",
+        "severity": "info",
+        "evidenceIds": [
+          "ev_40ca3257789c0f2ccdfad83a"
+        ],
+        "coverageIds": [
+          "a11y:72535a8001835f8b06801f8a",
+          "a11y:b78fade97e4f485351c233b0",
+          "a11y:57e726a9752f8acaa435fbdd"
+        ],
+        "id": "fi_b016213519c2aca349ba3447",
+        "group": 6
+      },
+      {
+        "agentId": "accessibility",
+        "scope": {
+          "page": "https://solvd.com/",
+          "state": "initial",
+          "element": ".wp-elements-b98e7840f1301df219b9f2b3a9eacbdf"
+        },
+        "title": "Elements must meet minimum color contrast ratio thresholds",
+        "severity": "info",
+        "evidenceIds": [
+          "ev_11f96f84b15fed99eed2a81e"
+        ],
+        "coverageIds": [
+          "a11y:72535a8001835f8b06801f8a",
+          "a11y:b78fade97e4f485351c233b0",
+          "a11y:57e726a9752f8acaa435fbdd"
+        ],
+        "id": "fi_c2821ddf44a54ff99c4fa687",
+        "group": 6
+      },
+      {
+        "agentId": "accessibility",
+        "scope": {
+          "page": "https://solvd.com/",
+          "state": "initial",
+          "element": ".wp-elements-383fb2b8baab340ed1caf10ebaf77d88"
+        },
+        "title": "Elements must meet minimum color contrast ratio thresholds",
+        "severity": "info",
+        "evidenceIds": [
+          "ev_c89369c758feb36ad323505f"
+        ],
+        "coverageIds": [
+          "a11y:72535a8001835f8b06801f8a",
+          "a11y:b78fade97e4f485351c233b0",
+          "a11y:57e726a9752f8acaa435fbdd"
+        ],
+        "id": "fi_ebafa764bc25244937687cd5",
+        "group": 6
+      },
+      {
+        "agentId": "accessibility",
+        "scope": {
+          "page": "https://solvd.com/",
+          "state": "initial",
+          "element": ".wp-elements-eb331ebf7a9f5bf503f4b77c52734e9a"
+        },
+        "title": "Elements must meet minimum color contrast ratio thresholds",
+        "severity": "info",
+        "evidenceIds": [
+          "ev_4636d122ef8dd2b47dead9b7"
+        ],
+        "coverageIds": [
+          "a11y:72535a8001835f8b06801f8a",
+          "a11y:b78fade97e4f485351c233b0",
+          "a11y:57e726a9752f8acaa435fbdd"
+        ],
+        "id": "fi_7f490e34839f5876a0c4ef61",
+        "group": 6
+      },
+      {
+        "agentId": "accessibility",
+        "scope": {
+          "page": "https://solvd.com/",
+          "state": "initial",
+          "element": ".has-heading-1-font-size"
+        },
+        "title": "Elements must meet minimum color contrast ratio thresholds",
+        "severity": "info",
+        "evidenceIds": [
+          "ev_f49583c1da4f73d522576f20"
+        ],
+        "coverageIds": [
+          "a11y:72535a8001835f8b06801f8a",
+          "a11y:b78fade97e4f485351c233b0",
+          "a11y:57e726a9752f8acaa435fbdd"
+        ],
+        "id": "fi_0b21ae78317bb50b342fa35f",
+        "group": 6
+      },
+      {
+        "agentId": "accessibility",
+        "scope": {
+          "page": "https://solvd.com/",
+          "state": "initial",
+          "element": "video[preload=\"auto\"]"
+        },
+        "title": "<video> elements must have captions",
+        "severity": "info",
+        "evidenceIds": [
+          "ev_4430e4aba06c15a2ae4b77f2"
+        ],
+        "coverageIds": [
+          "a11y:72535a8001835f8b06801f8a",
+          "a11y:b78fade97e4f485351c233b0",
+          "a11y:57e726a9752f8acaa435fbdd"
+        ],
+        "id": "fi_dd3156053ae123c9717ddc6f",
+        "group": 7
+      },
+      {
+        "agentId": "accessibility",
+        "scope": {
+          "page": "https://solvd.com/",
+          "state": "initial",
+          "element": "video[preload=\"none\"]"
+        },
+        "title": "<video> elements must have captions",
+        "severity": "info",
+        "evidenceIds": [
+          "ev_5f6fd634831e2d0e910b2db3"
+        ],
+        "coverageIds": [
+          "a11y:72535a8001835f8b06801f8a",
+          "a11y:b78fade97e4f485351c233b0",
+          "a11y:57e726a9752f8acaa435fbdd"
+        ],
+        "id": "fi_e474bcec4a5e378d0e7845cc",
+        "group": 7
+      },
+      {
+        "agentId": "accessibility",
+        "scope": {
+          "page": "https://solvd.com/",
+          "state": "initial",
+          "element": ".swiper-slide-visible > .wp-block-group-is-layout-constrained.is-layout-constrained.wp-block-group > .flexible-columns-wrapper.wp-block-bb-flexible-columns > .has-1-columns-sm.flexible-columns.has-2-columns > .order-sm-last.flexible-column > .flex-direction-column.flexible-column__content.wp-block-bb-flexible-column > .wp-block-cover.is-light.has-custom-content-position > .wp-block-cover__video-background.intrinsic-ignore.lazy"
+        },
+        "title": "<video> elements must have captions",
+        "severity": "info",
+        "evidenceIds": [
+          "ev_aab3bf71b8e1c9ed4fbf28c8"
+        ],
+        "coverageIds": [
+          "a11y:72535a8001835f8b06801f8a",
+          "a11y:b78fade97e4f485351c233b0",
+          "a11y:57e726a9752f8acaa435fbdd"
+        ],
+        "id": "fi_83cd45b0a262bb0d9c770434",
+        "group": 7
+      },
+      {
+        "agentId": "accessibility",
+        "scope": {
+          "page": "https://solvd.com/",
+          "state": "initial",
+          "element": ".swiper-slide-next > .wp-block-group-is-layout-constrained.is-layout-constrained.wp-block-group > .flexible-columns-wrapper.wp-block-bb-flexible-columns > .has-1-columns-sm.flexible-columns.has-2-columns > .order-sm-last.flexible-column > .flex-direction-column.flexible-column__content.wp-block-bb-flexible-column > .wp-block-cover.is-light.has-custom-content-position > .wp-block-cover__video-background.intrinsic-ignore.lazy"
+        },
+        "title": "<video> elements must have captions",
+        "severity": "info",
+        "evidenceIds": [
+          "ev_b86119f410ec9cb07f2352e5"
+        ],
+        "coverageIds": [
+          "a11y:72535a8001835f8b06801f8a",
+          "a11y:b78fade97e4f485351c233b0",
+          "a11y:57e726a9752f8acaa435fbdd"
+        ],
+        "id": "fi_4c0a24fabaa9f8fa88a6cc55",
+        "group": 7
+      },
+      {
+        "agentId": "accessibility",
+        "scope": {
+          "page": "https://solvd.com/",
+          "state": "initial",
+          "element": "div[aria-label=\"3 / 5\"] > .wp-block-group-is-layout-constrained.is-layout-constrained.wp-block-group > .flexible-columns-wrapper.wp-block-bb-flexible-columns > .has-1-columns-sm.flexible-columns.has-2-columns > .order-sm-last.flexible-column > .flex-direction-column.flexible-column__content.wp-block-bb-flexible-column > .wp-block-cover.is-light.has-custom-content-position > .wp-block-cover__video-background.intrinsic-ignore.lazy"
+        },
+        "title": "<video> elements must have captions",
+        "severity": "info",
+        "evidenceIds": [
+          "ev_311d618c7d4149aefaf09d43"
+        ],
+        "coverageIds": [
+          "a11y:72535a8001835f8b06801f8a",
+          "a11y:b78fade97e4f485351c233b0",
+          "a11y:57e726a9752f8acaa435fbdd"
+        ],
+        "id": "fi_d5a82599cb2a9aee9a8e392c",
+        "group": 7
+      },
+      {
+        "agentId": "accessibility",
+        "scope": {
+          "page": "https://solvd.com/",
+          "state": "initial",
+          "element": "div[aria-label=\"4 / 5\"] > .wp-block-group-is-layout-constrained.is-layout-constrained.wp-block-group > .flexible-columns-wrapper.wp-block-bb-flexible-columns > .has-1-columns-sm.flexible-columns.has-2-columns > .order-sm-last.flexible-column > .flex-direction-column.flexible-column__content.wp-block-bb-flexible-column > .wp-block-cover.is-light.has-custom-content-position > .wp-block-cover__video-background.intrinsic-ignore.lazy"
+        },
+        "title": "<video> elements must have captions",
+        "severity": "info",
+        "evidenceIds": [
+          "ev_b8853d30d5fd98a24b85ee83"
+        ],
+        "coverageIds": [
+          "a11y:72535a8001835f8b06801f8a",
+          "a11y:b78fade97e4f485351c233b0",
+          "a11y:57e726a9752f8acaa435fbdd"
+        ],
+        "id": "fi_e4261da53983e5f5bb47921d",
+        "group": 7
+      },
+      {
+        "agentId": "accessibility",
+        "scope": {
+          "page": "https://solvd.com/",
+          "state": "initial",
+          "element": "div[aria-label=\"5 / 5\"] > .wp-block-group-is-layout-constrained.is-layout-constrained.wp-block-group > .flexible-columns-wrapper.wp-block-bb-flexible-columns > .has-1-columns-sm.flexible-columns.has-2-columns > .order-sm-last.flexible-column > .flex-direction-column.flexible-column__content.wp-block-bb-flexible-column > .wp-block-cover.is-light.has-custom-content-position > .wp-block-cover__video-background.intrinsic-ignore.lazy"
+        },
+        "title": "<video> elements must have captions",
+        "severity": "info",
+        "evidenceIds": [
+          "ev_340c2b6dc8662e36c790bfce"
+        ],
+        "coverageIds": [
+          "a11y:72535a8001835f8b06801f8a",
+          "a11y:b78fade97e4f485351c233b0",
+          "a11y:57e726a9752f8acaa435fbdd"
+        ],
+        "id": "fi_f0724177f978d06c02660b2e",
+        "group": 7
+      }
+    ],
+    "artifacts": [],
+    "findingGroups": [
+      {
+        "id": 0,
+        "rule": "button-name",
+        "summary": "Fix any of the following:\n  Element does not have inner text that is visible to screen readers\n  aria-label attribute does not exist or is empty\n  aria-labelledby attribute does not exist, references elements that do not exist or references elements that are empty\n  Element has no title attribute\n  Element does not have an implicit (wrapped) <label>\n  Element does not have an explicit <label>\n  Element's default semantics were not overridden with role=\"none\" or role=\"presentation\"",
+        "disposition": "finding",
+        "evidenceData": [
+          {
+            "rule": "button-name",
+            "impact": "critical",
+            "tags": [
+              "cat.name-role-value",
+              "wcag2a",
+              "wcag412",
+              "section508",
+              "section508.22.a",
+              "TTv5",
+              "TT6.a",
+              "EN-301-549",
+              "EN-9.4.1.2",
+              "ACT",
+              "RGAAv4",
+              "RGAA-11.9.1"
+            ],
+            "criteria": [
+              "4.1.2"
+            ]
+          }
+        ]
+      },
+      {
+        "id": 1,
+        "rule": "color-contrast",
+        "summary": "Fix any of the following:\n  Element has insufficient color contrast of 3.32 (foreground color: #665e5c, background color: #000000, font size: 12.0pt (16px), font weight: normal). Expected contrast ratio of 4.5:1",
+        "disposition": "finding",
+        "evidenceData": [
+          {
+            "rule": "color-contrast",
+            "impact": "serious",
+            "tags": [
+              "cat.color",
+              "wcag2aa",
+              "wcag143",
+              "TTv5",
+              "TT13.c",
+              "EN-301-549",
+              "EN-9.1.4.3",
+              "ACT",
+              "RGAAv4",
+              "RGAA-3.2.1"
+            ],
+            "criteria": [
+              "1.4.3"
+            ]
+          }
+        ]
+      },
+      {
+        "id": 2,
+        "rule": "color-contrast",
+        "summary": "Fix any of the following:\n  Element has insufficient color contrast of 3.32 (foreground color: #665e5c, background color: #000000, font size: 10.5pt (14px), font weight: normal). Expected contrast ratio of 4.5:1",
+        "disposition": "finding",
+        "evidenceData": [
+          {
+            "rule": "color-contrast",
+            "impact": "serious",
+            "tags": [
+              "cat.color",
+              "wcag2aa",
+              "wcag143",
+              "TTv5",
+              "TT13.c",
+              "EN-301-549",
+              "EN-9.1.4.3",
+              "ACT",
+              "RGAAv4",
+              "RGAA-3.2.1"
+            ],
+            "criteria": [
+              "1.4.3"
+            ]
+          }
+        ]
+      },
+      {
+        "id": 3,
+        "rule": "landmark-unique",
+        "summary": "Fix any of the following:\n  The landmark must have a unique aria-label, aria-labelledby, or title to make landmarks distinguishable",
+        "disposition": "finding",
+        "evidenceData": [
+          {
+            "rule": "landmark-unique",
+            "impact": "moderate",
+            "tags": [
+              "cat.semantics",
+              "best-practice"
+            ],
+            "criteria": []
+          }
+        ]
+      },
+      {
+        "id": 4,
+        "rule": "region",
+        "summary": "Fix any of the following:\n  Some page content is not contained by landmarks",
+        "disposition": "finding",
+        "evidenceData": [
+          {
+            "rule": "region",
+            "impact": "moderate",
+            "tags": [
+              "cat.keyboard",
+              "best-practice",
+              "RGAAv4",
+              "RGAA-9.2.1"
+            ],
+            "criteria": []
+          }
+        ]
+      },
+      {
+        "id": 5,
+        "rule": "color-contrast",
+        "summary": "Fix any of the following:\n  Element's background color could not be determined because it partially overlaps other elements",
+        "disposition": "review-needed",
+        "evidenceData": [
+          {
+            "rule": "color-contrast",
+            "impact": "serious",
+            "tags": [
+              "cat.color",
+              "wcag2aa",
+              "wcag143",
+              "TTv5",
+              "TT13.c",
+              "EN-301-549",
+              "EN-9.1.4.3",
+              "ACT",
+              "RGAAv4",
+              "RGAA-3.2.1"
+            ],
+            "criteria": [
+              "1.4.3"
+            ]
+          }
+        ]
+      },
+      {
+        "id": 6,
+        "rule": "color-contrast",
+        "summary": "Fix any of the following:\n  Element's background color could not be determined due to a pseudo element",
+        "disposition": "review-needed",
+        "evidenceData": [
+          {
+            "rule": "color-contrast",
+            "impact": "serious",
+            "tags": [
+              "cat.color",
+              "wcag2aa",
+              "wcag143",
+              "TTv5",
+              "TT13.c",
+              "EN-301-549",
+              "EN-9.1.4.3",
+              "ACT",
+              "RGAAv4",
+              "RGAA-3.2.1"
+            ],
+            "criteria": [
+              "1.4.3"
+            ]
+          }
+        ]
+      },
+      {
+        "id": 7,
+        "rule": "video-caption",
+        "summary": "Fix all of the following:\n  Check that captions are available for the element",
+        "disposition": "review-needed",
+        "evidenceData": [
+          {
+            "rule": "video-caption",
+            "impact": "critical",
+            "tags": [
+              "cat.text-alternatives",
+              "wcag2a",
+              "wcag122",
+              "section508",
+              "section508.22.a",
+              "TTv5",
+              "TT17.a",
+              "EN-301-549",
+              "EN-9.1.2.2",
+              "RGAAv4",
+              "RGAA-4.3.1"
+            ],
+            "criteria": [
+              "1.2.2"
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}
