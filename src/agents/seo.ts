@@ -120,14 +120,13 @@ export function observeSeoRequestFailures(page: Page, note: (reason: string) => 
   return failures;
 }
 
-// This function is serialized into the page; keep it independent of module state.
+// This function is serialized into the page. Keep it independent of module state
+// and local function bindings: tsx adds Node-side __name calls to those bindings.
 export function captureSeoDocument(limit: number): {html?:string;reason?:string} {
   if (!document.documentElement || !document.head) return {reason:'Rendered SEO document root or head is missing'};
   const robots = new Set(['robots','googlebot','bingbot','gptbot','oai-searchbot','chatgpt-user','claudebot',
     'claude-searchbot','perplexitybot','applebot','google-extended','ccbot','googlebot-news','googlebot-image']);
-  const escape = (value: string) => value.replaceAll('&','&amp;').replaceAll('"','&quot;').replaceAll('<','&lt;').replaceAll('>','&gt;');
   let html = '<!doctype html><html><head>';
-  const append = (text: string) => { if (html.length + text.length > limit) return false; html += text; return true; };
   for (const node of document.head.querySelectorAll('title,base,meta,link')) {
     const tag = node.tagName.toLowerCase();
     const name = node.getAttribute('name') ?? '';
@@ -135,19 +134,29 @@ export function captureSeoDocument(limit: number): {html?:string;reason?:string}
     if (tag === 'meta' && name.toLowerCase() !== 'description' && !robots.has(name.trim().toLowerCase())) continue;
     if (tag === 'link' && !(node.getAttribute('rel') ?? '').toLowerCase().split(/\s+/).includes('canonical')) continue;
     const attributes = tag === 'base' ? ['href'] : tag === 'meta' ? ['name','content'] : tag === 'link' ? ['rel','href'] : [];
-    const text = '<'+tag+attributes.map(key=>node.hasAttribute(key) ? ' '+key+'="'+escape(node.getAttribute(key)!)+'"' : '').join('')+'>'+
-      (tag === 'title' ? node.innerHTML+'</title>' : '');
-    if (!append(text)) return {reason:'Rendered SEO metadata exceeds the snapshot size limit'};
+    let text = '<'+tag;
+    for (const key of attributes) {
+      if (!node.hasAttribute(key)) continue;
+      const value = node.getAttribute(key)!.replaceAll('&','&amp;').replaceAll('"','&quot;').replaceAll('<','&lt;').replaceAll('>','&gt;');
+      text += ' '+key+'="'+value+'"';
+    }
+    text += '>'+(tag === 'title' ? node.innerHTML+'</title>' : '');
+    if (html.length + text.length > limit) return {reason:'Rendered SEO metadata exceeds the snapshot size limit'};
+    html += text;
   }
-  if (!append('</head><body>')) return {reason:'Rendered SEO metadata exceeds the snapshot size limit'};
+  if (html.length + '</head><body>'.length > limit) return {reason:'Rendered SEO metadata exceeds the snapshot size limit'};
+  html += '</head><body>';
   // JSON-LD can occur in the body; hydration data and executable scripts are irrelevant here.
   for (const script of document.querySelectorAll('script')) {
     if ((script.getAttribute('type') ?? '').trim().toLowerCase() !== 'application/ld+json') continue;
-    if (!append('<script type="application/ld+json">'+(script.textContent ?? '')+'</script>')) {
+    const text = '<script type="application/ld+json">'+(script.textContent ?? '')+'</script>';
+    if (html.length + text.length > limit) {
       return {reason:'Rendered SEO JSON-LD exceeds the snapshot size limit'};
     }
+    html += text;
   }
-  if (!append('</body></html>')) return {reason:'Rendered SEO metadata exceeds the snapshot size limit'};
+  if (html.length + '</body></html>'.length > limit) return {reason:'Rendered SEO metadata exceeds the snapshot size limit'};
+  html += '</body></html>';
   return {html};
 }
 
