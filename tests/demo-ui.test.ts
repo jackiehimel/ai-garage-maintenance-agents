@@ -363,3 +363,18 @@ test('saved combined links restore SEO discovery and the selected performance pr
   assert.deepEqual(configuration.profile, { id: 'mobile-v1', samples: 4 });
   assert.equal(configuration.pageDiscovery, 'sitemap-sample');
 });
+
+test('the web report states measured phone timing and shows one shared verification for combined performance findings', async () => {
+  const performance=reportFor('performance','3');performance.coverage=accessibilityReport().coverage;
+  performance.measurements={navigation:{pages:['mobile','desktop'].map((device,index)=>({page:targetUrl,formFactor:device,profileId:`${device}-v1`,planned:3,succeeded:3,
+    metrics:{'performance-score':{median:index?81:55},'largest-contentful-paint':{median:index?3268:6845}},samples:[{status:'collected',metrics:{'performance-score':index?81:55},diagnostics:['image-delivery-insight','render-blocking-insight','network-dependency-tree-insight'].map(id=>({id,score:0.5,resources:[{url:`https://example.com/${device}.css`,durationMs:index?100:300}]}))}]}))}};
+  const reports=[reportFor('seo-ai-search','1'),accessibilityReport(),performance];
+  const ui=demo(async path=>path==='/api/health'?Response.json({status:'ok',runtime:{mode:'local'}}):path.startsWith('/api/report-summary?')?Response.json(buildCustomerReport(reports,{scope:'all'})):Response.json(reports.find(r=>path.includes(r.runId))),{search:`?runs=${reports.map(r=>r.runId).join(',')}&scope=all`});
+  await setImmediate();await setImmediate();
+  const card=ui.nodes().find(node=>node.className==='verdict-card'&&node.children.some(child=>child.textContent==='Performance'))!;
+  assert.ok(card.children.some(node=>/On phones.*6.8 s.*desktop 3.3 s/.test(node.textContent)));
+  const section=ui.nodes().find(node=>node.id==='customer-performance')!;
+  assert.equal(section.children.filter(node=>node.className==='customer-finding').length,3);
+  assert.equal(section.children.filter(node=>node.className==='finding-check').length,1);
+  assert.doesNotMatch(ui.text(),/Effort:/);
+});
