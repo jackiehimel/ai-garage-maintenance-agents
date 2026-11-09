@@ -279,3 +279,7 @@ input[type="file"]::file-selector-button { padding: 7px 9px; margin-right: 8px; 
 .summary-unavailable { color: var(--card); }
 @media (max-width: 800px) { .verdict-grid { grid-template-columns: 1fr; } .verdict-card { padding: 20px; } .customer-score strong { font-size: 2.7rem; } }
 @media (max-width: 480px) { .customer-metrics, .customer-images { grid-template-columns: 1fr; } .customer-finding { padding: 16px; } .sample-row { gap: 8px; } }
+
+.recent-reviews { margin: 2rem 0; }
+.recent-review { padding: 1rem 0; border-top: 1px solid var(--border, #dce5e0); }
+.recent-review p { margin: .35rem 0; }

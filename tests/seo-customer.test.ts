@@ -5,10 +5,11 @@ import { collectSeoEvidence } from '../src/agents/seo.js';
 import { validateRequest } from '../src/core/input.js';
 import { createPublicHttpClient } from '../src/core/network.js';
 import { baselineIdentity, createBaseline, compareFindings } from '../src/core/baseline.js';
+import { collectionStatus } from '../src/core/evidence.js';
 
 const target='https://example.com/';
 const html=(title:string,description:string,structured='')=>`<!doctype html><html><head><title>${title}</title><meta name="description" content="${description}">${structured}</head><body>Page</body></html>`;
-async function scan(options:{pages?:string[];sitemap?:string[];documents?:Record<string,string>;preview?:Uint8Array}={}) {
+async function scan(options:{pages?:string[];sitemap?:string[];documents?:Record<string,string>;preview?:Uint8Array;robots?:string;sitemapResponse?:{status:number;body?:string}|'timeout'}={}) {
   const request=validateRequest({agentId:'seo-ai-search',targetUrl:target,...(options.pages?{pages:options.pages}:{})});
   const pages=options.sitemap??['https://example.com/services/','https://example.com/about/','https://other.com/steal','https://example.com/blog/post/a','https://example.com/file.pdf','https://example.com/'];
   const requested:string[]=[];
@@ -19,8 +20,10 @@ async function scan(options:{pages?:string[];sitemap?:string[];documents?:Record
   };
   const client=createPublicHttpClient({resolve:async()=>[{address:'93.184.215.14',family:4}],transport:async({url})=>{
     requested.push(url.href);
-    const body=url.pathname==='/robots.txt'?'User-agent: *\nDisallow:\nSitemap: https://example.com/sitemap.xml':url.pathname==='/sitemap.xml'?'<urlset>'+pages.map(page=>`<url><loc>${page.replaceAll('&','&amp;')}</loc></url>`).join('')+'</urlset>':documents[url.href];
-    return {status:body?200:404,headers:{'content-type':url.pathname.endsWith('.xml')?'application/xml':url.pathname==='/robots.txt'?'text/plain':'text/html'},body:Readable.from([body??''])};
+    const response=url.pathname==='/sitemap.xml'?options.sitemapResponse:undefined;
+    if (response==='timeout') throw new Error('HTTP request deadline exceeded');
+    const body=url.pathname==='/robots.txt'?(options.robots??'User-agent: *\nDisallow:\nSitemap: https://example.com/sitemap.xml'):url.pathname==='/sitemap.xml'?'<urlset>'+pages.map(page=>`<url><loc>${page.replaceAll('&','&amp;')}</loc></url>`).join('')+'</urlset>':documents[url.href];
+    return {status:response?.status??(body?200:404),headers:{'content-type':url.pathname.endsWith('.xml')?'application/xml':url.pathname==='/robots.txt'?'text/plain':'text/html'},body:Readable.from([response?(response.body??''):(body??'')])};
   }});
   try {
     const result=await collectSeoEvidence(request,client,async()=>({browser:'test-browser',driver:'test-driver',close:async()=>{},capture:async(url)=>({url,status:documents[url]?200:404,headers:{},redirects:[],html:documents[url],preview:url===target?options.preview:undefined,diagnostics:[]})}));
@@ -85,10 +88,58 @@ test('a healthy sample reports concrete positives without fabricating SEO findin
   assert.ok(observations.every(item=>(item.data as any).checks.every((check:any)=>check.status==='pass')));
 });
 
-test('missing sitemap evidence limits scope instead of inventing additional pages',async()=>{
+test('a valid but empty sitemap does not add any pages to the sample',async()=>{
   const {result}=await scan({sitemap:[]});
   assert.equal((result.measurements?.seoSample as any)?.pages.length,1);
   assert.equal(result.coverage.find(item=>item.subject==='public-page sample selection')?.status,'incomplete');
+  assert.ok(!result.findings.some(item=>item.rule==='seo.sitemap-missing'));
+});
+
+test('a confirmed missing sitemap is a finding alongside a missing description in a complete SEO review',async()=>{
+  for (const [status,robots] of [[404,'User-agent: *\nDisallow:'],[410,undefined]] as const) {
+    const {result}=await scan({robots,sitemapResponse:{status},documents:{[target]:html('Example Domain','')}});
+    assert.equal(collectionStatus(result.coverage),'complete');
+    assert.deepEqual((result.measurements?.seoSample as any)?.pages,[{url:target,source:'submitted'}]);
+    assert.equal(result.coverage.find(item=>item.subject==='owner-supplied Search Console evidence')?.status,'not-configured');
+    assert.deepEqual(result.findings.map(item=>item.rule).sort(),['seo.description-missing','seo.sitemap-missing']);
+    const missing=result.findings.find(item=>item.rule==='seo.sitemap-missing');
+    assert.equal(missing?.title,'Add a sitemap');
+    assert.equal(missing?.disposition,'finding');
+    const sitemap=result.evidence.find(item=>item.kind==='seo.sitemap-membership');
+    assert.ok(sitemap&&missing.evidenceIds.includes(sitemap.id));
+    assert.equal((sitemap.data as {documents:{status:number}[]}).documents[0]?.status,status);
+  }
+});
+
+test('unavailable or incomplete sitemap traversal cannot establish that the sitemap is missing',async()=>{
+  const validIndex='<sitemapindex><sitemap><loc>https://example.com/child.xml</loc></sitemap></sitemapindex>';
+  for (const options of [
+    {sitemapResponse:{status:403}},
+    {sitemapResponse:'timeout' as const},
+    {sitemapResponse:{status:200,body:'<urlset><url>'}},
+    {sitemapResponse:{status:200,body:validIndex}},
+    {sitemapResponse:{status:404},robots:'<html>Invalid policy</html>'},
+  ]) {
+    const {result}=await scan(options);
+    assert.equal(collectionStatus(result.coverage),'partial');
+    assert.equal(result.coverage.find(item=>item.subject==='public-page sample selection')?.status,'incomplete');
+    assert.ok(!result.findings.some(item=>item.rule==='seo.sitemap-missing'));
+  }
+});
+
+test('a missing sitemap declared in both robots.txt and an index limits traversal without a duplicate fetch',async()=>{
+  const child=target+'child.xml';
+  const {result,requested}=await scan({
+    pages:[target],
+    robots:`User-agent: *\nDisallow:\nSitemap: ${target}sitemap.xml\nSitemap: ${child}`,
+    sitemapResponse:{status:200,body:`<sitemapindex><sitemap><loc>${child}</loc></sitemap></sitemapindex>`},
+  });
+  assert.equal(collectionStatus(result.coverage),'partial');
+  const membership=result.coverage.find(item=>item.subject==='sampled sitemap membership');
+  assert.equal(membership?.status,'incomplete');
+  assert.equal(membership?.data?.traversalCoverage,'incomplete');
+  assert.ok(!result.findings.some(item=>item.rule==='seo.sitemap-missing'));
+  assert.equal(requested.filter(url=>url===child).length,1);
 });
 
 test('an available page preview is retained as an artifact referenced by its metadata',async()=>{

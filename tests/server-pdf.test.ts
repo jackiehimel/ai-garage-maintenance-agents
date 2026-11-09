@@ -36,6 +36,14 @@ test('saved report PDF downloads through the local API with origin and selection
     assert.equal(summary.status,200);
     const view=await summary.json();
     assert.equal(view.sections.length,3);
+    const selected=await(await fetch(`http://127.0.0.1:${port}/api/report-summary?runs=${report.runId}&scope=selected`)).json();
+    assert.equal(selected.sections.length,1);
+    const historyUrl=`http://127.0.0.1:${port}/api/reviews`;
+    assert.equal((await(await fetch(historyUrl)).json()).reviews.length,1);
+    const selection={runIds:[report.runId],scope:'all'};
+    assert.equal((await fetch(historyUrl,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(selection)})).status,200);
+    assert.equal((await(await fetch(historyUrl)).json()).reviews.length,2);
+    assert.equal((await fetch(historyUrl,{method:'POST',headers:{'Content-Type':'application/json',Origin:'https://untrusted.com'},body:JSON.stringify(selection)})).status,403);
     const accessibility=view.sections.find((section:{agentId:string})=>section.agentId==='accessibility');
     assert.equal(accessibility.rating.tone,'attention');
     assert.match(accessibility.headline,/7/);
