@@ -55,6 +55,7 @@ test('combined PDF leads with measured phone timing and combines device opportun
   const text=pdfText(pdf),firstPage=text.split('Page 1 of')[0];
   assert.match(firstPage,/On phones, your main content appears after\s+6.6 s \(goal: under 2 s\); desktop 3.2 s\./);
   assert.match(firstPage,/Finding: a problem/);
+  assert.match(text,/Performance score\s+Mobile\s+50 \/ 100[\s\S]*?Desktop\s+79 \/ 100/);
   assert.equal((text.match(/Needs review\s+\/\s+Reduce image weight/g)??[]).length,1);
   assert.match(text,/Mobile: mobile-image.webp \(estimated 10 KB saving\)/);
   assert.match(text,/Desktop: desktop-image.webp \(estimated 20 KB saving\)/);

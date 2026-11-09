@@ -108,7 +108,7 @@ export async function renderCombinedPdf(reports:AgentReport[],options:CustomerPd
   function metricsTable(section:CustomerSection){
     const defs=[['Performance score','performance score'],['Main content appears','(LCP)'],['Blocking during load','(TBT)'],['Visual stability','(CLS)']];
     for(const [name,key] of defs){
-      const all=section.metrics.filter(m=>m.label.includes(key)).map(item=>({device:item.label.startsWith('Mobile')||(!item.label.includes(' - ')&&section.scope.startsWith('Mobile'))?'Mobile':'Desktop',item}));
+      const all=section.metrics.filter(m=>m.label.includes(key)).map(item=>({device:item.label.startsWith('Mobile')||(!item.label.startsWith('Desktop')&&section.scope.startsWith('Mobile'))?'Mobile':'Desktop',item}));
       for(let offset=0;offset<all.length;offset+=2){
       const items=all.slice(offset,offset+2);
       const colW=W/items.length,maxH=Math.max(...items.map(r=>h(r.item!.interpretation,8,false,colW-20)))+46;
