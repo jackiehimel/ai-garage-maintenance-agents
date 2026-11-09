@@ -879,8 +879,11 @@ function renderCustomerReport(view, reports, baselineNote = '', scope = 'all') {
   overview.append(element('p', 'eyebrow', 'Solvd website review'));
   const title = element('h2', '', 'Your website at a glance');
   title.id = 'report-title'; title.tabIndex = -1; overview.append(title);
-  paragraph(overview, [view.targetUrl, view.dateLabel].filter(Boolean).join(' · '), 'report-target');
-  paragraph(overview, areaSummary(view.sections), 'customer-headline');
+  paragraph(overview, [siteLabel(view.targetUrl), view.dateLabel].filter(Boolean).join(' · '), 'report-target');
+  const unassessed = view.sections.some(section => customerTone(section.rating.tone) === 'limited');
+  const measuredLead = view.sections.some(section => section.headline === view.headline);
+  paragraph(overview, measuredLead ? view.headline : areaSummary(view.sections), 'customer-headline');
+  if (measuredLead && unassessed) paragraph(overview, areaSummary(view.sections), 'customer-subhead');
   const actions = element('div', 'actions');
   const message = element('p', 'meta'); message.setAttribute('role', 'status');
   endpointDownload(actions, scope === 'all' ? 'Download combined PDF' : 'Download PDF', pdfEndpoint, 'solvd-website-maintenance.pdf', message).className = 'button primary';
@@ -895,17 +898,27 @@ function renderCustomerReport(view, reports, baselineNote = '', scope = 'all') {
       const score = element('div', 'customer-score');
       score.append(element('strong', '', section.rating.score), element('span', '', '/ 100')); card.append(score);
     }
-    paragraph(card, section.rating.label, 'verdict-label');
-    paragraph(card, issueBreakdown(section), 'verdict-breakdown');
-    paragraph(card, section.headline, 'verdict-summary');
-    paragraph(card, Number.isFinite(section.rating.score) ? sentenceCase(section.rating.basis) : '', 'verdict-basis');
-    paragraph(card, scopeLine(section.scope, 'Checked'), 'verdict-basis');
+    const counted = Number.isFinite(section.rating.score) ? null : /^(\d+)\s+(.+)$/.exec(section.rating.label);
+    if (counted) {
+      const stat = element('div', 'customer-score');
+      stat.append(element('strong', '', counted[1])); card.append(stat);
+    }
+    paragraph(card, counted ? sentenceCase(counted[2]) : section.rating.label, 'verdict-label');
+    const top = [...section.findings.filter(finding => finding.kind === 'finding'), ...section.findings.filter(finding => finding.kind === 'review')].slice(0, 3);
+    if (Number.isFinite(section.rating.score) || !top.length) paragraph(card, section.headline, 'verdict-summary');
+    if (top.length) {
+      const list = element('ul', 'verdict-items');
+      for (const finding of top) list.append(element('li', '', finding.title));
+      card.append(list);
+    }
     const link = element('a', 'text-link', 'See findings and next steps'); link.href = `#customer-${section.agentId}`; card.append(link);
     cards.append(card);
   }
   overview.append(cards);
-  paragraph(overview, 'Each area is measured differently and on its own sample of pages, so the three results are not a like-for-like score.', 'customer-key');
-  paragraph(overview, view.key, 'customer-key');
+  const guide = disclosure('customer-guide', 'How to read these results');
+  paragraph(guide, 'Each area is measured in its own way and on its own sample of pages, so the three results are not a like-for-like score. Each section below says what was checked.');
+  paragraph(guide, view.key);
+  overview.append(guide);
   paragraph(overview, baselineNote, 'meta'); root.append(overview);
 
   const nav = element('nav', 'report-nav section-nav');

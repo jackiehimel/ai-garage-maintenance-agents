@@ -353,3 +353,39 @@ body[data-view="report"] .report, body[data-view="technical"] .report { margin-t
 .recent-review p { margin: 0; font-size: .86rem; }
 .recent-review p:last-child { grid-column: 1 / -1; color: var(--ink-soft); }
 @media (max-width: 560px) { .recent-review { grid-template-columns: 1fr; } .section-nav { font-size: .8rem; gap: 4px 12px; } }
+
+/* Summary pass 2: fewer words, larger type, nothing smaller than 14px in the customer report. */
+#report-title:focus-visible { outline: none; }
+body[data-view="report"] #run-status:not([data-running="true"]) { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+.customer-overview { padding: clamp(22px, 3.6vw, 44px); }
+.customer-overview > .eyebrow { display: none; }
+.customer-overview h2 { font-size: 1rem !important; letter-spacing: .08em; text-transform: uppercase; color: var(--accent); font-weight: 740; }
+.customer-overview .report-target { margin-top: 4px; font-size: 1rem; color: var(--ink-soft); }
+.customer-overview > .customer-headline { max-width: 30ch; margin-top: 18px; font-size: clamp(1.6rem, 3.4vw, 2.3rem); line-height: 1.18; letter-spacing: -.03em; font-weight: 740; text-wrap: balance; }
+.customer-subhead { margin-top: 12px !important; font-size: 1.05rem; color: var(--ink); }
+.customer-overview > .actions { margin-top: 22px; gap: 10px; }
+.customer-overview > .actions .button { min-height: 48px; padding: 11px 18px; font-size: 1rem; }
+.customer-overview .verdict-grid { margin: 30px 0 6px; gap: 18px; }
+.verdict-card { gap: 6px; padding: 26px; border-top-width: 6px; }
+.verdict-card h3 { font-size: .95rem; letter-spacing: .06em; text-transform: uppercase; font-weight: 720; }
+.verdict-card .customer-score { margin-top: 8px; }
+.verdict-card .customer-score strong { font-size: 4rem; line-height: 1; }
+.verdict-card .customer-score span { font-size: 1.25rem; }
+.verdict-label { font-size: 1.2rem; }
+.verdict-summary { margin-top: 10px !important; font-size: 1rem; line-height: 1.5; color: var(--ink); }
+.verdict-items { margin: 12px 0 0; padding-inline-start: 20px; font-size: 1rem; line-height: 1.45; color: var(--ink); }
+.verdict-items li + li { margin-top: 6px; }
+.verdict-card .text-link { padding-top: 18px; font-size: .95rem; }
+.customer-guide { margin-top: 18px; font-size: .95rem; }
+.customer-guide > summary { color: var(--accent); font-weight: 650; }
+.customer-guide p { max-width: 80ch; color: var(--ink-soft); }
+.section-nav { font-size: .95rem; padding: 12px 18px; gap: 8px 22px; }
+.customer-section > h2 { font-size: clamp(1.5rem, 3vw, 2rem); }
+.customer-section > .customer-headline { margin-top: 12px; font-size: 1.15rem; }
+.customer-scope, .customer-section .meta, .finding-where, .finding-check, .customer-limits, .customer-comparison, .technical-link, .finding-details .report-list { font-size: .9rem; }
+.customer-finding { padding: 22px 24px; }
+.customer-finding h3 { font-size: 1.2rem; }
+.customer-finding .finding-kind { font-size: .8rem; letter-spacing: .06em; text-transform: uppercase; }
+.customer-limits { padding-top: 22px; line-height: 1.55; }
+.finding-group-label { font-size: .85rem !important; }
+@media (max-width: 800px) { .verdict-card .customer-score strong { font-size: 3.2rem; } }
