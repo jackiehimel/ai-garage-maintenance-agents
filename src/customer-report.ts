@@ -188,9 +188,11 @@ function seo(report: AgentReport, section: CustomerSection): void {
     if (!def && /description/.test(rule)) def=['Search descriptions need attention','A missing or unclear description misses an opportunity to explain the page before someone visits.','Write one accurate, useful description per page.','Content + SEO'];
     if (!def && /structured/.test(rule)) def=['Structured page information needs review','Search engines may receive less useful context about the page.','Review the appropriate structured-data types and validate the markup.','SEO lead + developer'];
     def ??= ['Additional search checks need review','The sampled page has a search-related signal that needs context.','Review the recorded page and agree the intended search behavior before making a change.','SEO lead'];
-    const f=baseFinding(report,group,def[0],def[1],def[2],def[3],'Focused review','Repeat the page checks and confirm the intended search signals.'); f.where=unique(group.map(g=>pagePath(g.scope.page)));
+    const f=baseFinding(report,group,def[0],def[1],def[2],def[3],'Focused review','Repeat the page checks and confirm the intended search signals.');
+    f.where=unique(group.map(g=>{const path=pagePath(g.scope.page);return path==='/'?'Homepage':path;}));
+    if(rule==='seo.sitemap-missing') f.where=['Website sitemap'];
     if(rule==='seo.description-missing') {
-      f.title=f.where.length===1?`No search description on ${f.where[0]}`:`${plural(f.where.length,'page')} without a search description`;
+      f.title=f.where.length===1?`No search description on ${f.where[0]==='Homepage'?'the homepage':f.where[0]}`:`${plural(f.where.length,'page')} without a search description`;
       if(group.every(g=>evidenceFor(report,g).some(e=>
         !str(obj(e.data).reason) && ((e.kind==='seo.page-quality' && obj(e.data).descriptionStatus==='missing') ||
         (/^seo\.(source|rendered)-metadata$/.test(e.kind) && typeof obj(e.data).description==='string' && !str(obj(e.data).description).trim()))))) f.kind='finding';
