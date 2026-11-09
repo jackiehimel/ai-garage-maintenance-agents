@@ -167,6 +167,7 @@ function seo(report: AgentReport, section: CustomerSection): void {
   section.rating = { label:findings.length ? 'Needs attention' : actualPages.length > 1 ? 'Sample checks look sound' : 'Initial checks look sound', tone:findings.length?'attention':'good',basis:`${plural(actualPages.length || report.configuration.pages.length,'page')} sampled; ${plural(findings.length,'item')} to address` };
   section.headline = findings.length ? `${plural(findings.length,'search-readiness item')} ${findings.length === 1 ? 'needs' : 'need'} attention across the sampled pages.` : actualPages.length > 1 ? 'The sampled pages have useful search foundations in place.' : 'The homepage has useful search foundations; a wider page sample is the next step.';
   const definitions: Record<string,[string,string,string,string]> = {
+    'seo.description-missing':['A page has no search description','This page has no description to explain its content before someone visits.','Write an accurate summary of this page for prospective visitors.','Content + SEO'],
     'seo.http-status':['A page could not be loaded successfully','Visitors and search crawlers may not receive the intended page.','Restore the intended page response or redirect visitors to the right destination.','Website developer'],
     'seo.noindex':['A page asks search engines to stay out','The page includes an instruction not to index it. This matters if the page is meant to attract search visitors.','Confirm whether the page should appear in search, then align its indexing instructions.','SEO lead + developer'],
     'seo.robots-disallow':['Search crawlers are blocked from a page','Selected search crawlers cannot access the page under its current crawl policy.','Confirm whether the block is intentional and allow access if the page should be discoverable.','SEO lead + developer'],
@@ -184,7 +185,9 @@ function seo(report: AgentReport, section: CustomerSection): void {
     if (!def && /description/.test(rule)) def=['Search descriptions need attention','A missing or unclear description misses an opportunity to explain the page before someone visits.','Write one accurate, useful description per page.','Content + SEO'];
     if (!def && /structured/.test(rule)) def=['Structured page information needs review','Search engines may receive less useful context about the page.','Review the appropriate structured-data types and validate the markup.','SEO lead + developer'];
     def ??= ['Additional search checks need review','The sampled page has a search-related signal that needs context.','Review the recorded page and agree the intended search behavior before making a change.','SEO lead'];
-    const f=baseFinding(report,group,def[0],def[1],def[2],def[3],'Focused review','Repeat the page checks and confirm the intended search signals.'); f.where=unique(group.map(g=>pageLabel(g.scope.page))); section.findings.push(f);
+    const f=baseFinding(report,group,def[0],def[1],def[2],def[3],'Focused review','Repeat the page checks and confirm the intended search signals.'); f.where=unique(group.map(g=>pageLabel(g.scope.page)));
+    if(rule==='seo.canonical-target'){const targets=unique(group.flatMap(g=>evidenceFor(report,g).flatMap(e=>list(obj(e.data).canonical).map(c=>str(obj(c).url)))));if(targets.length)f.impact+=` Recorded preferred address: ${targets.join('; ')}.`;}
+    section.findings.push(f);
   }
   const goodMeta = metadata.filter(e => str(obj(e.data).title).trim() && str(obj(e.data).description).trim());
   if (goodMeta.length) section.positives.push(`A page title and description are present on ${plural(new Set(goodMeta.map(e=>e.scope.page)).size,'checked page')}.`);

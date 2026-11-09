@@ -82,7 +82,7 @@ export async function renderCombinedPdf(reports: AgentReport[], options: Custome
     const ref=section.images[0];if(!ref||(!ref.dataUrl&&!options.loadArtifact))return;
     let bytes:Buffer|undefined;try{bytes=ref.dataUrl?Buffer.from(ref.dataUrl.split(',')[1],'base64'):await options.loadArtifact?.(ref.runId,ref.artifactId);}catch{return;}if(!bytes)return;
     // Only measured image artifacts are shown. A missing or invalid image leaves no placeholder.
-    try{const y=doc.y;ensure(190);const imageY=doc.y;doc.image(bytes,left,imageY,{fit:[width,155],align:'center',valign:'center'});doc.y=imageY+163;text(ref.caption,8,color.muted,false,10);if(doc.y<y)doc.y=y;}catch{/* The text report remains useful if the stored image cannot be decoded. */}
+    try{ensure(190);const imageY=doc.y;doc.image(bytes,left,imageY,{fit:[width,155],align:'center',valign:'center'});doc.y=imageY+163;text(ref.caption,8,color.muted,false,10);}catch{/* The text report remains useful if the stored image cannot be decoded. */}
   }
 
   doc.addPage();

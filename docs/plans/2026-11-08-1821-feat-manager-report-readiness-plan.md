@@ -40,6 +40,8 @@ The first combined PDF exposed engineering evidence rather than answering a cust
 
 Verified feedback details: the current accessibility review set is 54 pseudo-element contrast cases, one overlap case and seven caption cases. Evidence establishes an unnamed close control but not failed dismissal. The observed link labels are usable in customer prose; main-navigation placement must not be inferred from a CSS selector. Venu's source requirement names page loading under two seconds, not a universal two-second LCP standard.
 
+Fresh expanded collection on November 9: SEO `run_8c96547d2407e2901ebf335e` sampled the homepage, `/about-us/` and `/ai-tour-video-campaign/`. It identified a missing description and an HTTP preferred-address declaration on the HTTPS campaign page; both remain review items. Rendered coverage on two pages was partial. Performance `run_59b10a0e73da2bd2c6052702` completed 3/3 mobile and 3/3 desktop samples: median scores 50 and 79, median LCP 6.593 s and 3.224 s. Both runs deliberately disabled AI to isolate collector acceptance. The customer PDF combines these new results with the retained accessibility run above. CI at `52512208fc810b07f096412514e516b19eabb9f3` passed 184 tests, typecheck and build. Localhost 4176 still needs restart to load the shared customer-summary endpoint; live AI and UI acceptance remain open.
+
 ## Product Contract
 
 ### Summary
