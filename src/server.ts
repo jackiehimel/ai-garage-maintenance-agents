@@ -1,6 +1,7 @@
 import { createServer } from 'node:http';
 import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
+import { recentReviews, saveReview } from './recent-reviews.js';
 import { runAgent } from './run.js';
 import { renderReport } from './report.js';
 import { collectRemote } from './core/remote.js';
@@ -26,6 +27,14 @@ const server=createServer(async(req,res)=>{
     const url=new URL(req.url||'/',`http://${host}`);
     const path=url.pathname;
     if(req.method==='GET' && path==='/api/health') return json(200,{status:'ok',agents:['seo-ai-search','accessibility','performance'],runtime:{mode:remote?'github-actions':'local',browserReady:remote||Boolean(process.env.CHROME_PATH)}});
+    if(req.method==='GET' && path==='/api/reviews') return json(200,{reviews:await recentReviews(storageRoot)});
+    if(req.method==='POST' && path==='/api/reviews') {
+      if(!req.headers['content-type']?.startsWith('application/json'))return json(415,{error:'Use application/json'});
+      const chunks:Buffer[]=[];let size=0;
+      for await(const chunk of req){size+=chunk.length;if(size>1024)return json(413,{error:'Review selection too large'});chunks.push(chunk);}
+      try{await saveReview(storageRoot,JSON.parse(Buffer.concat(chunks).toString()));return json(200,{saved:true});}
+      catch{return json(400,{error:'Choose saved results for the same website.'});}
+    }
     if(req.method==='GET' && (path==='/api/report.pdf' || path==='/api/report-summary')) {
       try {
         const selection=await loadPdfReports(url.searchParams,async id=>{

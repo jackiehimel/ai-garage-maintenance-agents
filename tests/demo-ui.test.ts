@@ -21,7 +21,7 @@ const report: AgentReport = {
   retention: { status: 'saved' }, baselineUnavailableReason: 'No comparable evidence.',
 };
 
-function demo(fetch: (path: string, init?: RequestInit) => Promise<Response>, options: { agent?: string; search?: string } = {}) {
+function demo(fetch: (path: string, init?: RequestInit) => Promise<Response>, options: { agent?: string; search?: string; recent?: {url:string;date:string;verdict:string;href:string}[] } = {}) {
   class Element {
     textContent = '';
     value = '';
@@ -63,7 +63,7 @@ function demo(fetch: (path: string, init?: RequestInit) => Promise<Response>, op
     document: { querySelector: element, createElement: () => new Element(), createDocumentFragment: () => new Element(), body: new Element() },
     window: { location: address, history: { replaceState: (_state: null, _title: string, url: URL) => { address = url; } }, addEventListener(type: string, handler: () => void) { windowEvents.set(type, handler); } },
     FormData: class { get() { return options.agent ?? 'seo-ai-search'; } },
-    fetch, URL, URLSearchParams, AbortController, Blob, Error,
+    fetch: (path:string,init?:RequestInit) => path === '/api/reviews' ? Promise.resolve(Response.json(init?.method==='POST'?{saved:true}:{reviews:options.recent??[]})) : fetch(path,init), URL, URLSearchParams, AbortController, Blob, Error,
   });
   const nodes = (node: Element): Element[] => [node, ...node.children.flatMap(nodes)];
   return { element, nodes: () => nodes(element('#report')), leave: () => windowEvents.get('pagehide')?.(), text: () => { const contents = (node: Element): string => [node.textContent, ...node.children.map(contents)].join(' '); return contents(element('#report')); }, links: () => { const links = (node: Element): string[] => [node.href, ...node.children.flatMap(links)].filter(Boolean); return links(element('#report')); }, address: () => address, submit: () => element('#run-form').handlers.get('submit')!({ preventDefault() {} }) };
@@ -118,7 +118,7 @@ test('an interrupted response body is reported as an unverified run', async () =
   await submit();
   assert.match(element('#run-error').textContent, /connection.*interrupted/i);
   assert.match(element('#run-error').textContent, /run was not verified/i);
-  assert.match(element('#runtime-state').textContent, /browser availability is checked during the run/i);
+  assert.match(element('#runtime-state').textContent, /Ready to review your public website/i);
 });
 
 
@@ -165,7 +165,7 @@ test('one submission queues all agents without overlap and retains successful re
   assert.doesNotMatch(ui.text(), /Browser could not collect accessibility evidence/);
   assert.match(ui.element('#run-status').textContent, /2 of 3 reports returned/);
   assert.match(ui.text(), /Download combined PDF/);
-  assert.deepEqual(ui.links().filter(link => link.startsWith('/?run=')), [`/?run=run_${'1'.repeat(24)}`, `/?run=run_${'3'.repeat(24)}`]);
+  assert.deepEqual(ui.links().filter(link => link.startsWith('/?run=')), [`/?run=run_${'1'.repeat(24)}&view=technical`, `/?run=run_${'3'.repeat(24)}&view=technical`]);
   assert.equal(ui.address().searchParams.get('runs'), `run_${'1'.repeat(24)},run_${'3'.repeat(24)}`);
   assert.equal(ui.address().searchParams.get('scope'), 'all');
   assert.equal(ui.element('#run-controls').disabled, false);
@@ -281,7 +281,7 @@ test('a missing customer-summary service preserves saved results without offerin
   assert.match(ui.text(),/saved|collected/i);
   assert.match(ui.text(),/summary.*unavailable/i);
   assert.doesNotMatch(ui.text(),/Internal stack failure|Download combined PDF|AI assessment/);
-  assert.deepEqual(ui.links().filter(link=>link.startsWith('/?run=')),[`/?run=${first.runId}`]);
+  assert.deepEqual(ui.links().filter(link=>link.startsWith('/?run=')),[`/?run=${first.runId}&view=technical`]);
 });
 
 test('the customer view presents measured scores and plain findings with real images while keeping internal evidence in separate links', async () => {
@@ -377,4 +377,43 @@ test('the web report states measured phone timing and shows one shared verificat
   assert.equal(section.children.filter(node=>node.className==='customer-finding').length,3);
   assert.equal(section.children.filter(node=>node.className==='finding-check').length,1);
   assert.doesNotMatch(ui.text(),/Effort:/);
+});
+
+test('a bare domain single-agent run shows common progress and a selected customer report with technical evidence behind a link',async()=>{
+  const result=accessibilityReport();let release!:(r:Response)=>void;let body:any;
+  const ui=demo(async(path,init)=>{
+    if(path==='/api/health')return Response.json({status:'ok',runtime:{mode:'local'}});
+    if(path.startsWith('/api/report-summary?')){assert.match(path,/scope=selected/);return Response.json(buildCustomerReport([result]));}
+    assert.equal(path,'/api/run');body=JSON.parse(String(init?.body));return new Promise<Response>(resolve=>{release=resolve;});
+  },{agent:'accessibility',search:'?view=technical'});
+  ui.element('#target-url').value='example.com';
+  const pending=ui.submit();await setImmediate();
+  assert.equal(body.targetUrl,'https://example.com');
+  assert.match(ui.text(),/Reviewing your website.*usually take 2–5 minutes/);
+  assert.match(ui.text(),/0 of 1 reports/);
+  release(Response.json(result));await pending;
+  assert.equal(ui.nodes().filter(n=>n.className==='verdict-card').length,1);
+  assert.match(ui.text(),/Discuss these findings with Solvd/);
+  assert.doesNotMatch(ui.text(),/RUN REPORT|Collection:|AI assessment:|Finding ID/);
+  assert.ok(ui.links().includes(`/?run=${result.runId}&view=technical`));
+  assert.equal(ui.address().searchParams.get('run'),result.runId);
+  assert.equal(ui.address().searchParams.has('view'),false);
+});
+
+test('single saved links default to customer presentation and an explicit technical link keeps the detailed report available',async()=>{
+  const result=accessibilityReport();
+  const fetch=async(path:string)=>path==='/api/health'?Response.json({status:'ok',runtime:{mode:'local'}}):path.startsWith('/api/report-summary?')?Response.json(buildCustomerReport([result])):Response.json(result);
+  const customer=demo(fetch,{search:`?run=${result.runId}`});await setImmediate();await setImmediate();
+  assert.equal(customer.nodes().filter(n=>n.className==='verdict-card').length,1);
+  const technical=demo(fetch,{search:`?run=${result.runId}&view=technical`});await setImmediate();await setImmediate();
+  assert.equal(technical.nodes().filter(n=>n.className==='verdict-card').length,0);
+  assert.match(technical.text(),/Run configuration and runtime/);
+});
+
+test('recent reviews expose saved links with site, date and verdict without introducing arbitrary links',async()=>{
+  const ui=demo(async()=>Response.json({status:'ok',runtime:{mode:'local'}}),{recent:[{url:'https://example.com/',date:'2026-11-09T01:00:00Z',verdict:'SEO: 2 findings need attention',href:`/?run=${runId}`} ]});
+  await setImmediate();
+  const rows=ui.element('#recent-list').children;
+  assert.equal(rows.length,1);assert.equal(rows[0].children[0].href,`/?run=${runId}`);
+  assert.ok(rows[0].children.some(n=>n.textContent==='SEO: 2 findings need attention'));
 });

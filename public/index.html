@@ -46,7 +46,7 @@
                   <span class="agent-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="10.8" cy="10.8" r="5.8"></circle><path d="m15 15 4 4m-11.5-8.2h6.6m-3.3-3.3v6.6"></path></svg></span>
                   <span class="radio-indicator" aria-hidden="true"></span>
                 </span>
-                <span class="agent-name" id="seo-name">Technical SEO &amp; Discoverability</span>
+                <span class="agent-name" id="seo-name">SEO check</span>
                 <span class="agent-description" id="seo-description">Inspect crawl signals, indexing directives, canonicals, sitemaps, and structured data.</span>
               </span>
             </label>
@@ -57,7 +57,7 @@
                   <span class="agent-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="5" r="1.7"></circle><path d="M5 9.5c2.2.8 4.5 1.1 7 1.1s4.8-.3 7-1.1m-7 1.1V15m0 0-3.3 5m3.3-5 3.3 5"></path></svg></span>
                   <span class="radio-indicator" aria-hidden="true"></span>
                 </span>
-                <span class="agent-name" id="accessibility-name">Accessibility Regression</span>
+                <span class="agent-name" id="accessibility-name">Accessibility check</span>
                 <span class="agent-description" id="accessibility-description">Find accessibility issues, sample keyboard navigation, and see which checks need human review.</span>
               </span>
             </label>
@@ -68,7 +68,7 @@
                   <span class="agent-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4.2 17a8 8 0 1 1 15.6 0M7 17h10m-5-3 3-4m-8 3H6m6-5V7m5 6h1"></path><circle cx="12" cy="14" r="1"></circle></svg></span>
                   <span class="radio-indicator" aria-hidden="true"></span>
                 </span>
-                <span class="agent-name" id="performance-name">Performance Regression</span>
+                <span class="agent-name" id="performance-name">Speed check</span>
                 <span class="agent-description" id="performance-description">Measure speed on mobile and desktop, and identify resources worth improving.</span>
               </span>
             </label>
@@ -80,17 +80,17 @@
           <div class="target-row">
             <div class="url-control">
               <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="m10 13 4-4m-6.2 5.8-1.1 1.1a3 3 0 0 0 4.2 4.2l2.9-2.9a3 3 0 0 0 0-4.2m2.4-3.8 1.1-1.1a3 3 0 0 0-4.2-4.2l-2.9 2.9a3 3 0 0 0 0 4.2"></path></svg>
-              <input id="target-url" name="target-url" type="url" inputmode="url" autocomplete="url" autocapitalize="none" spellcheck="false" maxlength="2048" value="https://solvd.com" aria-describedby="url-help" required>
+              <input id="target-url" name="target-url" type="text" inputmode="url" autocomplete="url" autocapitalize="none" spellcheck="false" maxlength="2048" value="https://solvd.com" aria-describedby="url-help" required>
             </div>
             <button id="run-button" class="button primary" type="submit">
               <span id="run-button-label">Run all three</span>
               <svg aria-hidden="true" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 10h12m-5-5 5 5-5 5"></path></svg>
             </button>
           </div>
-          <p id="url-help" class="field-help">Use a public HTTPS URL without credentials or a custom port.</p>
+          <p id="url-help" class="field-help">Enter a website such as solvd.com. We add https:// automatically.</p>
 
           <details id="advanced" class="advanced">
-            <summary>Configuration and baseline <span class="optional">Optional</span></summary>
+            <summary>Advanced <span class="optional">Optional settings and baseline</span></summary>
             <div class="advanced-body">
               <div>
                 <label class="field-label" for="configuration">Additional configuration (JSON)</label>
@@ -118,6 +118,7 @@
       </div>
     </form>
 
+    <section id="recent-reviews" class="report-panel recent-reviews" aria-labelledby="recent-title"><h2 id="recent-title">Recent reviews</h2><div id="recent-list"><p>No saved reviews yet. Run a check to get started.</p></div></section>
     <section id="report" class="report" aria-labelledby="report-title" hidden></section>
     <noscript><p class="error-message">Enable JavaScript to run checks and view their results.</p></noscript>
   </main>

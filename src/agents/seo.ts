@@ -311,11 +311,11 @@ interface Layer {
   headerCoverage: CoverageEntry; header: ReturnType<typeof headerDirectives>;
   document?: DocumentRead; url?: string; status?: number; redirects: readonly RedirectHop[];
 }
-interface SitemapDocument { requested: string; result: Source; parsed?: ReturnType<typeof readSitemap>; reason?: string }
+interface SitemapDocument { requested: string; result: Source; parsed?: ReturnType<typeof readSitemap>; reason?: string; missing?: boolean }
 interface Site {
   robotsUrl: string; robots: Source; robotStatus: CoverageStatus; robotReason?: string;
   rules?: ReturnType<typeof readRobots>;
-  maps: SitemapDocument[]; sitemapReasons: string[]; locations: Set<string>;
+  maps: SitemapDocument[]; sitemapReasons: string[]; sitemapMissing: boolean; locations: Set<string>;
 }
 function acceptedOrigin(candidate: string, origin: string): boolean {
   try { return parsePublicTarget(candidate).origin === origin; } catch { return false; }
@@ -377,13 +377,26 @@ async function fetchSite(
       sitemapReasons.add('Some declared sitemap URLs were invalid or outside the measured origin');
       continue;
     }
-    if (seen.has(normalized)) continue;
+    if (seen.has(normalized)) {
+      // A URL already observed missing at depth zero may also be a required
+      // child of an index. Use that observation without repeating the request.
+      if (depth > 0 && maps.some(map => map.requested === normalized && map.missing)) {
+        sitemapReasons.add('Some sitemap documents were inaccessible');
+      }
+      continue;
+    }
     if (maps.length >= SITEMAP_REQUESTS_PER_ORIGIN || depth > SITEMAP_INDEX_DEPTH) {
       sitemapReasons.add('Sitemap request or index depth limit reached; some documents were not fetched');
       break;
     }
     seen.add(normalized);
     const result = await fetchSource(client,normalized,origin,false);
+    // A missing discovery URL is an observation. A missing child of a sitemap
+    // index leaves some of the declared sitemap contents uninspected.
+    if (depth === 0 && !('error' in result) && (result.status === 404 || result.status === 410)) {
+      maps.push({requested:normalized,result,missing:true});
+      continue;
+    }
     if ('error' in result || result.status !== 200) {
       const reason = 'error' in result ? result.error : `Sitemap returned HTTP ${result.status}`;
       maps.push({requested:normalized,result,reason});
@@ -405,7 +418,8 @@ async function fetchSite(
     } else if (parsed.root === 'urlset') for (const loc of parsed.locations) locations.add(loc);
   }
   if (robotStatus !== 'complete') sitemapReasons.add('Sitemap discovery was limited by incomplete robots.txt coverage');
-  return {robotsUrl,robots,robotStatus,robotReason,rules,maps,sitemapReasons:[...sitemapReasons],locations};
+  const sitemapMissing = !sitemapReasons.size && maps.length > 0 && maps.every(map => map.missing);
+  return {robotsUrl,robots,robotStatus,robotReason,rules,maps,sitemapReasons:[...sitemapReasons],sitemapMissing,locations};
 }
 
 function sourceSnapshot(source: HttpResult): Snapshot {
@@ -508,6 +522,7 @@ export async function collectSeoEvidence(
   const discover = request.pageDiscovery === 'sitemap-sample' && pages.length === 1;
   let availableSitemapUrls = 0;
   let discoveryReason: string | undefined;
+  let discoveryLimited = false;
   if (discover) {
     const pending = sourceSites.get(canonicalOrigin) ?? fetchSite(client,canonicalOrigin);
     sourceSites.set(canonicalOrigin,pending);
@@ -519,7 +534,9 @@ export async function collectSeoEvidence(
     candidates.sort((a,b) => depth(a)-depth(b) || Number(Boolean(new URL(a).search))-Number(Boolean(new URL(b).search)) || a.localeCompare(b));
     availableSitemapUrls = candidates.length;
     for (const url of candidates.slice(0,DEFAULT_PAGE_SAMPLE - 1)) pages.push({url,source:'sitemap'});
-    if (!candidates.length) discoveryReason = 'No additional eligible same-origin pages could be identified in the sampled sitemap documents.';
+    discoveryLimited = !candidates.length && !site.sitemapMissing;
+    if (site.sitemapMissing) discoveryReason = 'The checked sitemap URLs returned HTTP 404 or 410, so the sample contains only the submitted page.';
+    else if (!candidates.length) discoveryReason = 'No additional eligible same-origin pages could be identified in the sampled sitemap documents.';
     else if (site.sitemapReasons.length) discoveryReason = 'The page sample comes from a limited sitemap traversal; it does not cover the entire site.';
   }
   const sources = Promise.all(pages.map(({url,source}) => url === request.targetUrl ? first :
@@ -662,20 +679,28 @@ export async function collectSeoEvidence(
 
     const sitemapReasons = [...new Set(robotSites.flatMap(item => item.sitemapReasons))];
     const sitemapDocuments = [...new Set(robotSites.flatMap(item => item.maps))];
+    const sitemapMissing = robotSites.every(item => item.sitemapMissing);
     const sitemapStatus = sitemapReasons.length ? (sitemapDocuments.length && sitemapDocuments.every(x => 'error' in x.result) ? 'unavailable' : 'incomplete') : 'complete';
     const lookup = new Set([page.url,source.url,render.url].filter((url): url is string => Boolean(url)).map(url => normalizedHttpUrl(url)).filter((url): url is string => Boolean(url)));
     const listedUrls = [...lookup].filter(url => robotSites.some(item => item.locations.has(url)));
     const positiveComplete = sitemapDocuments.some(({result,parsed,reason}) => !('error' in result) && result.status === 200 && !reason && !parsed?.reason && parsed?.root === 'urlset' && parsed.locations.some(url => lookup.has(url)));
-    const coverageBasis = positiveComplete ? 'fully-parsed-urlset-match' : 'bounded-traversal';
+    const coverageBasis = positiveComplete ? 'fully-parsed-urlset-match' : sitemapMissing ? 'observed-http-absence' : 'bounded-traversal';
     const sitemapCoverage = addCoverage(scope,'sampled sitemap membership',positiveComplete ? 'complete' : sitemapStatus,positiveComplete ? undefined : sitemapReasons.join('; ') || undefined,{traversalCoverage:sitemapStatus,coverageBasis});
-    addEvidence(scope,'seo.sitemap-membership','DNS-pinned public HTTP',listedUrls.length ? 'Page URL appears in the sampled sitemap data' : 'Page URL was not seen in the sampled sitemap data',{
-      listed:listedUrls.length > 0,listedUrls,checkedUrls:[...lookup],sampled:true,distinctLocations:new Set(robotSites.flatMap(item => [...item.locations])).size,
+    const sitemapEvidence = addEvidence(scope,'seo.sitemap-membership','DNS-pinned public HTTP',sitemapMissing ? 'Checked sitemap URLs returned HTTP 404 or 410' : listedUrls.length ? 'Page URL appears in the sampled sitemap data' : 'Page URL was not seen in the sampled sitemap data',{
+      listed:listedUrls.length > 0,listedUrls,checkedUrls:[...lookup],sampled:true,sitemapMissing,distinctLocations:new Set(robotSites.flatMap(item => [...item.locations])).size,
       reasons:sitemapReasons,documents:sitemapDocuments.map(({requested,result,parsed,reason}) => ({
         requested,...networkData(result),root:parsed?.root ?? null,locations:parsed?.locationCount ?? null,
         sample:parsed?.locations.slice(0,6) ?? [],reason:reason ?? null,
       })),
       coverage:sitemapCoverage.status,traversalCoverage:sitemapStatus,coverageBasis,
     });
+    if (page.url === request.targetUrl && sitemapMissing) addFinding(scope,'seo.sitemap-missing','Add a sitemap',
+      'The sitemap URLs checked during discovery returned HTTP 404 or 410. A sitemap can help search engines discover the public pages you want indexed.',
+      'low','finding',[sitemapEvidence,robotsEvidence],[sitemapCoverage],{
+        investigate:'Check whether the site already generates a sitemap at a different URL.',
+        correct:'Publish a sitemap listing the canonical public pages you want indexed and declare its URL in robots.txt.',
+        recheck:'Verify that the sitemap URL returns HTTP 200 with a readable sitemap and lists the intended URLs.',
+      });
 
     const readable = render.metadataCoverage.status === 'complete' && render.document ? render :
       source.metadataCoverage.status === 'complete' && source.document ? source : undefined;
@@ -802,7 +827,7 @@ export async function collectSeoEvidence(
     duplicateDescriptions:duplicateDescriptions.map(group=>({value:group[0].document.description,pages:group.map(item=>item.page)})),
     scopeNote:discoveryReason ?? 'A bounded sample of public pages was inspected; this is not a whole-site audit.'};
   addEvidence({page:request.targetUrl},'seo.sample-summary','DNS-pinned sitemap discovery and page inspection',`${pages.length} public pages selected for SEO inspection`,sampleData);
-  if (discover) addCoverage({page:request.targetUrl},'public-page sample selection',discoveryReason && !availableSitemapUrls?'incomplete':'complete',discoveryReason,
+  if (discover) addCoverage({page:request.targetUrl},'public-page sample selection',discoveryLimited?'incomplete':'complete',discoveryReason,
     {selectedPages:pages.length,availableSitemapUrls,selection:'Shallower same-origin sitemap URLs, then URLs without query strings, then alphabetical order. Maximum three pages.'});
 
   const records = request.supplied?.searchConsole ?? [];

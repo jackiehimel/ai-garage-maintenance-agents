@@ -52,6 +52,7 @@ const validRunId = (value) => typeof value === 'string' && /^run_[a-f0-9]{24}$/.
 let baselineFromRun = null;
 let activeRun = null;
 let runtimeMode;
+const customerNames = {'seo-ai-search':'SEO check',accessibility:'Accessibility check',performance:'Speed check'};
 
 const statusText = (status) => Object.hasOwn(labels, status) ? labels[status] : String(status ?? '').replace(/^./, (char) => char.toUpperCase());
 const metricTitle = (name) => Object.hasOwn(metricNames, name) ? metricNames[name] : name;
@@ -702,6 +703,7 @@ function renderReport(report) {
 function combinedAddress(reports) {
   const address = new URL(window.location.href);
   address.searchParams.delete('run');
+  address.searchParams.delete('view');
   address.searchParams.set('scope', 'all');
   if (reports.length) address.searchParams.set('runs', reports.map(report => report.runId).join(','));
   else address.searchParams.delete('runs');
@@ -716,20 +718,20 @@ function renderCombinedProgress(targetUrl, entries, finished = false, baselineNo
   title.id = 'report-title'; title.tabIndex = -1;
   overview.append(title);
   paragraph(overview, targetUrl, 'report-target');
-  paragraph(overview, `${reports.length} of 3 reports returned${finished ? '.' : ' · Checks in progress.'}`);
+  paragraph(overview, `${reports.length} of ${entries.length} reports returned${finished ? '.' : ' · Checks in progress.'}`);
   paragraph(overview, baselineNote, 'meta');
   if (finished) paragraph(overview, 'Your collected reports are saved. The customer summary is currently unavailable. Open an individual result below, or reload after the updated service is running.', 'summary-unavailable');
-  else paragraph(overview, 'We check SEO, accessibility, then performance. Keeping the speed tests separate makes the measurements more reliable.', 'meta');
+  else paragraph(overview, `Reviews usually take 2–5 minutes.${entries.length > 1 ? ' We check SEO, accessibility, then performance to keep speed measurements consistent.' : ' We are checking the page and preparing your findings.'}`, 'meta');
   root.append(overview);
   const cards = element('div', 'combined-grid');
   for (const item of entries) {
     const card = element('article', 'report-panel combined-card');
-    card.append(element('h3', '', agents[item.agentId].title));
+    card.append(element('h3', '', customerNames[item.agentId]));
     if (item.report) {
       paragraph(card, 'Evidence collected', 'meta');
       if (finished) {
         const link = element('a', 'button secondary', 'Open individual result');
-        link.href = `/?run=${item.report.runId}`; card.append(link);
+        link.href = `/?run=${item.report.runId}&view=technical`; card.append(link);
       }
     } else {
       card.append(badge(item.error ? 'No result available' : item.status, item.error ? 'error' : ''));
@@ -742,7 +744,7 @@ function renderCombinedProgress(targetUrl, entries, finished = false, baselineNo
 
 const customerTone = tone => ['good', 'attention', 'limited'].includes(tone) ? tone : 'limited';
 
-function renderCustomerReport(view, reports, baselineNote = '') {
+function renderCustomerReport(view, reports, baselineNote = '', scope = 'all') {
   const root = document.createDocumentFragment();
   const overview = element('div', 'report-panel customer-overview');
   overview.append(element('p', 'eyebrow', 'Solvd website review'));
@@ -768,7 +770,7 @@ function renderCustomerReport(view, reports, baselineNote = '') {
   overview.append(cards);
   const actions = element('div', 'actions');
   const message = element('p', 'meta'); message.setAttribute('role', 'status');
-  endpointDownload(actions, 'Download combined PDF', `/api/report.pdf?runs=${reports.map(report => report.runId).join(',')}&scope=all`, 'solvd-website-maintenance.pdf', message);
+  endpointDownload(actions, scope === 'all' ? 'Download combined PDF' : 'Download PDF', `/api/report.pdf?runs=${reports.map(report => report.runId).join(',')}&scope=${scope}`, 'solvd-website-maintenance.pdf', message);
   overview.append(actions, message);
   paragraph(overview, view.key, 'customer-key');
   paragraph(overview, baselineNote, 'meta'); root.append(overview);
@@ -850,7 +852,7 @@ function renderCustomerReport(view, reports, baselineNote = '') {
     paragraph(panel, [section.scope, section.limits].filter(Boolean).join(' '), 'customer-limits');
     const report = reports.find(report => report.agentId === section.agentId);
     if (report) {
-      const link = element('a', 'technical-link', 'Technical evidence and baseline'); link.href = `/?run=${report.runId}`; panel.append(link);
+      const link = element('a', 'technical-link', 'Technical evidence'); link.href = `/?run=${report.runId}&view=technical`; panel.append(link);
     }
     root.append(panel);
   }
@@ -860,24 +862,27 @@ function renderCustomerReport(view, reports, baselineNote = '') {
   if (document.activeElement === document.body || document.activeElement === runButton) title.focus();
 }
 
-function isCustomerReport(view, target) {
+function isCustomerReport(view, target, expectedIds) {
   return view && new URL(view.targetUrl).href === new URL(target).href && typeof view.headline === 'string' &&
-    Array.isArray(view.sections) && view.sections.length === 3 && new Set(view.sections.map(section => section.agentId)).size === 3 &&
+    Array.isArray(view.sections) && view.sections.length === expectedIds.length && new Set(view.sections.map(section => section.agentId)).size === expectedIds.length && view.sections.every(section => expectedIds.includes(section.agentId)) &&
     view.sections.every(section => Object.hasOwn(agents, section.agentId) && section.rating && typeof section.rating.label === 'string' &&
       ['findings','reviewGroups','positives','metrics','sampleScores','images'].every(key => Array.isArray(section[key]))) &&
     view.nextStep && typeof view.nextStep.title === 'string' && Array.isArray(view.nextStep.items);
 }
 
-async function showCustomerReport(target, entries, current, baselineNote = '') {
+async function showCustomerReport(target, entries, current, baselineNote = '', scope = 'all') {
   const reports = entries.flatMap(item => item.report ? [item.report] : []);
   if (!reports.length) { renderCombinedProgress(target, entries, true, baselineNote); return false; }
   runStatus.textContent = 'Preparing your website review…';
   try {
-    const response = await fetch(`/api/report-summary?runs=${reports.map(report => report.runId).join(',')}&scope=all`, { cache: 'no-store', credentials: 'same-origin', signal: current.controller.signal });
+    const response = await fetch(`/api/report-summary?runs=${reports.map(report => report.runId).join(',')}&scope=${scope}`, { cache: 'no-store', credentials: 'same-origin', signal: current.controller.signal });
     const view = await response.json();
     if (activeRun !== current) return false;
-    if (!response.ok || !isCustomerReport(view, target)) throw new Error('Customer summary unavailable');
-    renderCustomerReport(view, reports, baselineNote); return true;
+    if (!response.ok || !isCustomerReport(view, target, scope === 'all' ? Object.keys(agents) : entries.map(item => item.agentId))) throw new Error('Customer summary unavailable');
+    renderCustomerReport(view, reports, baselineNote, scope);
+    if (reports.length > 1 || scope === 'all') void saveRecentReview(reports, scope);
+    else loadRecentReviews();
+    return true;
   } catch {
     if (activeRun !== current) return false;
     renderCombinedProgress(target, entries, true, baselineNote); return false;
@@ -940,8 +945,9 @@ async function runAll(requests, current, baseline) {
   for (const [index, request] of requests.entries()) {
     if (activeRun !== current) return;
     entries[index].status = 'Running';
-    runStatus.textContent = `Running ${index + 1} of 3: ${agents[request.agentId].title}.`;
+    runStatus.textContent = `Running ${index + 1} of 3: ${customerNames[request.agentId]}.`;
     renderCombinedProgress(request.targetUrl, entries, false, baselineNote);
+    if (index === 0) reportPanel.scrollIntoView?.({behavior:'smooth',block:'start'});
     try {
       const report = await requestReport(request, current.controller.signal);
       if (activeRun !== current) return;
@@ -1017,13 +1023,16 @@ form.addEventListener('submit', async (event) => {
   runError.hidden = true;
   runError.textContent = '';
   const previousReportStatus = reportPanel.hidden ? '' : 'Showing the previous report.';
+  const previousNodes = [...reportPanel.children];
   runStatus.textContent = previousReportStatus;
-  const targetUrl = urlField.value.trim();
+  const entered = urlField.value.trim();
+  const targetUrl = /^[a-z][a-z0-9+.-]*:/i.test(entered) ? entered : `https://${entered}`;
   if (!/^https:\/\/[^/@?#:\s\\]+(?:[/?#][^\u0000-\u0020\u007f\\]*)?$/i.test(targetUrl)) {
     showError('Enter a public HTTPS URL without credentials or an explicit port.');
     urlField.focus();
     return;
   }
+  urlField.value = targetUrl;
   const agentId = new FormData(form).get('agent');
   if (agentId !== 'all' && !Object.hasOwn(agents, agentId)) {
     showError('Choose an agent to run.');
@@ -1052,21 +1061,25 @@ form.addEventListener('submit', async (event) => {
     }
     const request = { ...configuration, ...(agentId === 'performance' ? { profile: { id: 'mobile-and-desktop-v1', ...configuration.profile } } : {}), agentId, targetUrl, ...(baseline ? { baseline } : {}) };
     stage = 'running';
-    const worker = runtimeMode === 'github-actions' ? ' through GitHub Actions' : '';
-    runStatus.textContent = `Requested ${agents[agentId].title}${worker}. Waiting for the report… ${previousReportStatus}`.trimEnd();
+    runStatus.textContent = `Running ${customerNames[agentId]}.`;
+    renderCombinedProgress(targetUrl,[{agentId,status:'Running'}]);
+    reportPanel.scrollIntoView?.({behavior:'smooth',block:'start'});
     const result = await requestReport(request, current.controller.signal);
     if (activeRun !== current) return;
     setBusy(false);
-    renderReport(result);
+    const ready = await showCustomerReport(targetUrl,[{agentId,report:result}],current,'','selected');
+    if (activeRun !== current) return;
     const address = new URL(window.location.href);
     address.searchParams.delete('runs');
     address.searchParams.delete('scope');
+    address.searchParams.delete('view');
     address.searchParams.set('run', result.runId);
     window.history.replaceState(null, '', address);
-    runStatus.textContent = reportStatus('Report returned', result);
+    runStatus.textContent = ready ? 'Your website review and PDF are ready.' : 'Your result is saved; the customer summary is unavailable.';
   } catch (error) {
     if (activeRun !== current) return;
     runStatus.textContent = previousReportStatus;
+    reportPanel.replaceChildren(...previousNodes); reportPanel.hidden = !previousNodes.length;
     showError(error instanceof Error && error.name !== 'AbortError' ? error.message : 'The run did not return a report.');
     if (stage === 'preparing') {
       advanced.open = true;
@@ -1202,8 +1215,13 @@ async function loadSavedReport() {
     }
     restoreRunInputs(result);
     setBusy(false);
-    renderReport(result);
-    runStatus.textContent = reportStatus('Saved report loaded', result);
+    if (params.get('view') === 'technical') {
+      renderReport(result); runStatus.textContent = reportStatus('Technical report loaded',result);
+    } else {
+      const ready = await showCustomerReport(result.submittedUrl,[{agentId:result.agentId,report:result}],current,'','selected');
+      if(activeRun!==current)return;
+      runStatus.textContent=ready?'Saved website review loaded.':'Your result is saved; the customer summary is unavailable.';
+    }
   } catch (error) {
     if (activeRun !== current) return;
     runStatus.textContent = '';
@@ -1222,14 +1240,14 @@ async function checkRuntime() {
     const health = response.ok ? await response.json() : null;
     const mode = health?.status === 'ok' && health.runtime?.mode;
     if (mode === 'github-actions') {
-      runtimeState.textContent = 'Collection is configured to run on GitHub Actions. The target URL and optional collection settings are sent to the configured worker.';
+      runtimeState.textContent = 'Ready to review your public website.';
     } else if (mode === 'local') {
-      runtimeState.textContent = 'Collection is configured to run on the local server.';
+      runtimeState.textContent = 'Ready to review your public website.';
     } else {
       throw new Error('Unexpected health response.');
     }
     runtimeMode = mode;
-    runtimeState.append(' Browser availability is checked during the run.');
+    runtimeState.append(' Your results will be saved on this computer.');
   } catch {
     runtimeState.textContent = 'Could not confirm a connection to the local demo service at page load. Running a check will try again.';
   }
@@ -1239,4 +1257,27 @@ form.addEventListener('change', () => { if (!activeRun) setBusy(false); });
 updateBaselineSelection();
 checkRuntime();
 loadSavedReport();
+loadRecentReviews();
 
+
+async function loadRecentReviews() {
+  const root=document.querySelector('#recent-list');
+  if(!root)return;
+  try {
+    const response=await fetch('/api/reviews',{credentials:'same-origin',cache:'no-store'});
+    const data=await response.json();
+    if(!response.ok||!Array.isArray(data.reviews))return;
+    root.replaceChildren();
+    if(!data.reviews.length){paragraph(root,'No saved reviews yet. Run a check to get started.');return;}
+    for(const review of data.reviews){
+      if(typeof review.href!=='string'||!/^\/\?(?:run=run_[a-f0-9]{24}|scope=(?:all|selected)&runs=run_[a-f0-9]{24}(?:%2Crun_[a-f0-9]{24}){0,2})$/.test(review.href))continue;
+      const row=element('article','recent-review');
+      const link=element('a','text-link',review.url);link.href=review.href;row.append(link);
+      paragraph(row,new Date(review.date).toLocaleString(),'meta');paragraph(row,review.verdict);root.append(row);
+    }
+  }catch{/* Existing results and running checks remain available during a history error. */}
+}
+async function saveRecentReview(reports,scope){
+  try{await fetch('/api/reviews',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({runIds:reports.map(r=>r.runId),scope})});}catch{}
+  await loadRecentReviews();
+}

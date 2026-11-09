@@ -169,6 +169,7 @@ function seo(report: AgentReport, section: CustomerSection): void {
   if (actualPages.length) section.scope = `${plural(actualPages.length,'page')} checked: ${actualPages.map(pageLabel).join(', ')}.`;
   const findings = report.findings.filter(f => f.disposition === 'finding' || f.disposition === 'review-needed');
   const definitions: Record<string,[string,string,string,string]> = {
+    'seo.sitemap-missing':['Add a sitemap','No sitemap was found at the checked address. A sitemap helps search engines discover your pages.','Create a sitemap containing your public pages and reference it in robots.txt.','SEO lead + developer'],
     'seo.description-missing':['A page has no search description','This page has no description to explain its content before someone visits.','Write an accurate summary of this page for prospective visitors.','Content + SEO'],
     'seo.http-status':['A page could not be loaded successfully','Visitors and search crawlers may not receive the intended page.','Restore the intended page response or redirect visitors to the right destination.','Website developer'],
     'seo.noindex':['A page asks search engines to stay out','The page includes an instruction not to index it. This matters if the page is meant to attract search visitors.','Confirm whether the page should appear in search, then align its indexing instructions.','SEO lead + developer'],
