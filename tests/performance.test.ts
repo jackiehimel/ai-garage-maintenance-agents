@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { baselineIdentity, createBaseline } from '../src/core/baseline.js';
+import { baselineCompatibility, baselineIdentity, createBaseline } from '../src/core/baseline.js';
 import { validateRequest } from '../src/core/input.js';
 import type { CollectorResult, JsonObject, PortableBaseline } from '../src/core/types.js';
-import { collectPerformance, comparePerformanceMetrics } from '../src/agents/performance.js';
+import { collectPerformance, comparePerformanceMetrics, auditDiagnostics, performanceProfiles, performanceFlags, createDiagnosticEvidence } from '../src/agents/performance.js';
 import { navigationMetrics, summarizeNavigationPage } from '../src/agents/performance-measurements.js';
 
 const page = 'https://www.example.com/';
@@ -93,6 +93,10 @@ test('records supplied field and interaction evidence separately when navigation
     interactions:[{page,metric:'INP',value:170,unit:'ms',scenario:'Filter menu',source:{...source,name:'Interaction trace'}}],
   }});
   const report = await collectPerformance(input,{executablePath:'/missing-performance-test-chromium'});
+  assert.match(report.runtime.engine,/^performance-navigation-v2; Lighthouse /);
+  const identity=baselineIdentity(input,report.runtime,page);
+  const priorIdentity={...identity,runtime:{...identity.runtime,engine:report.runtime.engine.replace('performance-navigation-v2; ','')}};
+  assert.ok(baselineCompatibility(identity,priorIdentity).includes('Node, browser, driver, or engine version differs'));
   assert.deepEqual(report.measurements?.suppliedFieldMeasurements,input.supplied?.fieldMeasurements);
   assert.deepEqual(report.measurements?.suppliedInteractions,input.supplied?.interactions);
   assert.deepEqual(report.measurements?.release,{label:'July build',revision:'abc123'});
@@ -105,4 +109,79 @@ test('records supplied field and interaction evidence separately when navigation
   assert.equal(sampled.notRun,3);
   assert.ok(!Object.hasOwn(sampled.metrics as JsonObject,'INP'));
   assert.ok(report.coverage.every((entry) => entry.status !== 'complete'));
+});
+
+test('mobile and desktop runs retain separate sampling profiles and unavailable denominators', async () => {
+  const input = validateRequest({agentId:'performance',targetUrl:page,profile:{id:'mobile-and-desktop-v1',samples:3}});
+  const profiles = performanceProfiles(input.profile);
+  assert.deepEqual(profiles.map(p => p.id),['mobile-v1','desktop-v1']);
+  assert.equal(performanceFlags(profiles[0]).formFactor,'mobile');
+  assert.equal(performanceFlags(profiles[0]).screenEmulation?.mobile,true);
+  assert.equal(performanceFlags(profiles[0]).screenEmulation?.width,412);
+  assert.equal(performanceFlags(profiles[0]).throttling?.cpuSlowdownMultiplier,4);
+  assert.equal(performanceFlags(profiles[1]).screenEmulation?.mobile,false);
+  const result = await collectPerformance(input,{executablePath:'/missing-performance-test-chromium'});
+  const pages = (result.measurements?.navigation as JsonObject).pages as JsonObject[];
+  assert.deepEqual(pages.map(p => [p.profileId,p.planned,p.notRun]),[['mobile-v1',3,3],['desktop-v1',3,3]]);
+  assert.equal(new Set(result.coverage.map(entry=>entry.id)).size,result.coverage.length);
+  assert.deepEqual([...new Set(result.coverage.map(entry=>entry.scope.state))],['mobile','desktop']);
+});
+
+test('resource extraction names recorded blocking CSS, image savings and request dependencies without inventing costs', () => {
+  const result = {audits:{
+    'render-blocking-insight':{title:'Render blocking',score:0,numericValue:120,metricSavings:{LCP:120},details:{type:'table',items:[{url:'https://cdn.example.com/main.css',totalBytes:53671,wastedMs:180}]}},
+    'image-delivery-insight':{title:'Images',score:0,details:{type:'table',items:[{url:'https://www.example.com/hero.png',totalBytes:100000,wastedBytes:32395,node:{selector:'#hero',nodeLabel:'A student at a desk'},subItems:{items:[{reason:'Image dimensions exceed its displayed size',wastedBytes:32395}]}}]}},
+    'network-dependency-tree-insight':{title:'Network dependency tree',score:0,details:{type:'list',items:[{type:'network-tree',chains:{root:{url:page,navStartToEndTime:125,transferSize:4300,children:{css:{url:'https://cdn.example.com/main.css',navStartToEndTime:350,transferSize:53671,children:{}}}}},longestChain:{duration:350}}]}},
+  }};
+  const values = auditDiagnostics(result as never);
+  const blocking = values.find(x=>x.id==='render-blocking-insight')!;
+  assert.equal(blocking.estimatedSavingsMs,120);
+  assert.deepEqual(blocking.resources,[{url:'https://cdn.example.com/main.css',totalBytes:53671,durationMs:180}]);
+  const image = (values.find(x=>x.id==='image-delivery-insight')!.resources as JsonObject[])[0];
+  assert.equal(image.estimatedSavingsBytes,32395);
+  assert.equal(image.element,'#hero');
+  assert.equal(image.description,'A student at a desk');
+  assert.ok(!Object.hasOwn(image,'estimatedSavingsMs'));
+  const chain = values.find(x=>x.id==='network-dependency-tree-insight')!;
+  assert.equal(chain.longestChainMs,350);
+  const css = (chain.resources as JsonObject[]).find(x=>x.url==='https://cdn.example.com/main.css')!;
+  assert.equal(css.parentUrl,page);
+  assert.equal(css.completionTimeMs,350);
+});
+
+test('dual-profile comparisons never mix a mobile sample with a desktop baseline', () => {
+  const dual = validateRequest({agentId:'performance',targetUrl:page,profile:{id:'mobile-and-desktop-v1'}});
+  const desktopBefore = {...summarizeNavigationPage(page,3,baselineSamples),profileId:'desktop-v1'};
+  const mobileBefore = {...summarizeNavigationPage(page,3,[measured(1,1960),measured(2,2000),measured(3,2050)]),profileId:'mobile-v1'};
+  const before = collection([]); (before.measurements!.navigation as JsonObject).pages=[mobileBefore,desktopBefore];
+  const exported = createBaseline(baselineIdentity(dual,runtime,page),before);
+  assert.equal(exported.status,'available');
+  const after = collection([]);
+  (after.measurements!.navigation as JsonObject).pages=[
+    {...summarizeNavigationPage(page,3,[measured(1,1320),measured(2,1360),measured(3,1390)]),profileId:'desktop-v1'},
+    {...summarizeNavigationPage(page,3,[measured(1,1960),measured(2,2000),measured(3,2050)]),profileId:'mobile-v1'},
+  ];
+  const changes=comparePerformanceMetrics(after,exported.baseline).filter(change=>change.metric==='largest-contentful-paint');
+  assert.deepEqual(changes.map(change=>[change.profileId,change.before,change.after,change.status]),[
+    ['mobile-v1',2000,2000,'unchanged'],['desktop-v1',1000,1360,'regressed'],
+  ]);
+});
+
+test('resource evidence fits the assessment record allowance while retaining source, device and measured costs', () => {
+  const longPage=`https://www.example.com/${'x'.repeat(1900)}`;
+  const resources=Array.from({length:8},(_,index)=>({url:`https://cdn.example.com/${index}-${'x'.repeat(900)}.png`,totalBytes:100000,estimatedSavingsBytes:32395}));
+  const entry=createDiagnosticEvidence({id:'image-delivery-insight',title:'Images',score:0,resources},2,
+    performanceProfiles({...request.profile,id:'mobile-v1'})[0],{page:longPage,state:'mobile'},
+    {kind:'measured',name:'Lighthouse 13',observedAt:'2026-11-09T00:00:00Z'},['artifact-lhr']);
+  assert.ok(Buffer.byteLength(JSON.stringify(entry))<=4800);
+  assert.equal(entry.kind,'navigation-diagnostic');
+  const data=entry.data as JsonObject;
+  assert.equal(data.status,'collected');
+  assert.equal(data.profileId,'mobile-v1');
+  assert.equal(data.sampleIndex,2);
+  assert.equal(data.resourcesTruncated,true);
+  const retained=data.resources as JsonObject[];
+  assert.ok(retained.length>0 && retained.length<resources.length);
+  assert.equal(retained[0].estimatedSavingsBytes,32395);
+  assert.deepEqual(entry.artifactIds,['artifact-lhr']);
 });

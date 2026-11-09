@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
 import { Readable } from 'node:stream';
 import test from 'node:test';
 import { runInNewContext } from 'node:vm';
@@ -374,11 +375,45 @@ test('observed xhr guard and fetch failure account for the same reporting reques
 });
 
 
-const projectedSnapshot = (source:string) => {
+const projectedSnapshot = (source:string, serializedCapture = captureSeoDocument.toString(), limit = 1000000) => {
   const root = parse(source);
   const document = {documentElement:root.querySelector('html'),head:root.querySelector('head'),querySelectorAll:root.querySelectorAll.bind(root)};
-  return runInNewContext('('+captureSeoDocument.toString()+')(1000000)',{document}) as ReturnType<typeof captureSeoDocument>;
+  return runInNewContext('('+serializedCapture+')('+limit+')',{document}) as ReturnType<typeof captureSeoDocument>;
 };
+
+test('the source worker runtime serializes a self-contained bounded SEO capture', async () => {
+  // Load the same source runtime as npm run collect, even when this test is compiled.
+  // The page context receives only a document, never Node or transpiler helpers.
+  const capture = execFileSync(process.execPath,['--import','tsx','--input-type=module','--eval',
+    "import {captureSeoDocument} from './src/agents/seo.ts'; process.stdout.write(captureSeoDocument.toString());"],
+  {encoding:'utf8',timeout:5000});
+  const source = '<html><head><title>A &amp; B &lt; C</title><base href="/catalog/">'+
+    '<meta name="description" content="A &amp; &quot;B&quot; &lt;C&gt;"><meta name="robots" content="index">'+
+    '<link rel="canonical" href="item"><meta name="viewport" content="irrelevant">'+
+    '<script type="application/json">'+ 'x'.repeat(1100000)+'</script></head><body><div>'+ 'x'.repeat(1100000)+'</div>'+
+    '<script type="application/ld+json">{"@type":"Product"}</script></body></html>';
+  const snapshot = projectedSnapshot(source,capture);
+  assert.ok(snapshot.html && snapshot.html.length<1000);
+  assert.ok(snapshot.html.includes('content="A &amp; &quot;B&quot; &lt;C&gt;"'));
+  assert.doesNotMatch(snapshot.html,/irrelevant|application\/json|<div>/);
+  const document = readDocument(snapshot.html,url);
+  assert.equal(document.title,'A & B < C');
+  assert.equal(document.description,'A & "B" <C>');
+  assert.equal(document.canonical[0].url,'https://example.com/catalog/item');
+  assert.equal(document.directives[0].value,'index');
+  assert.deepEqual(document.jsonLd.map(block=>block.types),[['Product']]);
+  assert.equal(projectedSnapshot(source,capture,snapshot.html.length).html,snapshot.html);
+  const truncated = projectedSnapshot(source,capture,snapshot.html.length-1);
+  assert.equal(truncated.html,undefined);
+  assert.match(truncated.reason!,/metadata.*size limit/);
+  const oversizedJson = projectedSnapshot('<html><head></head><body><script type="application/ld+json">'+ 'x'.repeat(1000000)+'</script></body></html>',capture);
+  assert.equal(oversizedJson.html,undefined);
+  assert.match(oversizedJson.reason!,/JSON-LD.*size limit/);
+  assert.match(projectedSnapshot('',capture).reason!,/missing/);
+  const {result} = await fixture({snapshot});
+  assert.equal(result.coverage.find(c=>c.subject === 'rendered HTML canonical and indexing directives')?.status,'complete');
+  assert.equal(result.coverage.find(c=>c.subject === 'rendered JSON-LD parse and type observations')?.status,'complete');
+});
 
 test('bounded rendered SEO projection ignores large bodies and hydration while preserving metadata and body JSON-LD', async () => {
   const snapshot = projectedSnapshot('<html><head><title>Large page</title><base href="/catalog/"><meta name="robots" content="index"><meta name="description" content="A &amp; B"><link rel="canonical" href="item"><link rel="canonical" href="item">'+

@@ -232,15 +232,20 @@ function renderAssessment(report: AgentReport, evidence: Map<string, string>) {
   const result = report.assessment;
   const disclosure = result.truncated ? paragraph('The model received a capped subset of the available evidence.') : '';
   const warning = paragraph('AI prose may contain errors. The measured results above are the source of truth; verify this draft against the affected locations before acting.');
+  const grounded = result.status === 'available' && result.groundingVersion === 1;
+  const measured = grounded ? `${paragraph('Measured assessment summary')}${paragraph(result.summary)}${paragraph('Recorded facts checked against collected evidence. AI explanations and proposed investigations require verification. Reference and classification checks do not establish the semantic truth of generated prose.')}` : '';
   const draft = result.status === 'unavailable' ? `${paragraph('Assessment unavailable.')}${paragraph(result.reason)}
       <dl>${label('Model', result.model)}</dl>${referenceLine('Evidence sent', result.sentEvidenceIds ?? [], evidence)}`
-    : `${paragraph(result.summary)}
+    : `${paragraph(grounded ? result.interpretation?.text : result.summary)}
+      ${grounded ? referenceLine('Interpretation evidence', result.interpretation?.evidenceIds ?? [], evidence) : ''}
       <dl>${label('Model', result.model)}${label('Input tokens', result.usage?.inputTokens)}${label('Output tokens', result.usage?.outputTokens)}</dl>
       ${referenceLine('Evidence sent', result.sentEvidenceIds, evidence)}
       ${result.actions.map(action => `<article><h3>${esc(action.title)}</h3>
-        <p class="meta">AI-suggested priority (unverified): ${esc(action.priority)}</p>${paragraph(action.rationale)}${list(action.steps, true)}
+        <p class="meta">AI-suggested priority (unverified): ${esc(action.priority)}${action.mode ? ` · ${esc(action.mode)}` : ''}</p>${paragraph(action.rationale)}${list(action.steps, true)}
+        ${action.verification ? `<h4>Required verification</h4>${paragraph(action.verification)}` : ''}
+        ${action.hypothesis ? `<h4>Hypothesis — unverified (${esc(action.hypothesis.subject)})</h4>${paragraph(action.hypothesis.statement)}<h4>Missing evidence</h4>${list(action.hypothesis.missingEvidence)}` : ''}
         ${referenceLine('Supporting evidence', action.evidenceIds, evidence)}</article>`).join('') || paragraph('The assessment did not propose any actions.')}`;
-  return section('AI interpretation', `${warning}<details class="ai-draft"><summary>AI interpretation — unverified draft</summary>${disclosure}${draft}</details>`);
+  return section('AI interpretation', `${warning}${measured}<details class="ai-draft"><summary>AI interpretation — unverified draft</summary>${disclosure}${draft}</details>`);
 }
 
 function renderMeasurements(measurements: JsonObject | undefined) {
