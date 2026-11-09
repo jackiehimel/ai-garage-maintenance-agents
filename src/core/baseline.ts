@@ -18,6 +18,7 @@ export function baselineIdentity(request: ValidatedRequest, runtime: RuntimeVers
     configuration.components = request.components.map((c) => ({id:c.id,selector:c.selector}));
   }
   if (request.agentId === 'seo-ai-search') configuration.indexIntent = request.indexIntent.map((i) => ({page:i.page,intended:i.intended})).sort((a,b) => a.page.localeCompare(b.page));
+  if (request.agentId === 'seo-ai-search' && request.pageDiscovery) configuration.pageDiscovery = request.pageDiscovery;
   return {agentId:request.agentId,targetUrl:request.targetUrl,testedUrl,runtime:{...runtime},profile:structuredClone(request.profile),configuration};
 }
 
@@ -65,7 +66,7 @@ function identityFrom(input: unknown): BaselineIdentity {
     targetUrl:parsePublicTarget(i.targetUrl).href,testedUrl:parsePublicTarget(i.testedUrl).href,
     configuration:jsonObject(i.configuration),
     runtime:{node:string(r.node,'baseline Node version',120),browser:string(r.browser,'baseline browser version',120),engine:string(r.engine,'baseline engine version',120),browserDriver:maybeString(r.browserDriver,'baseline browser driver',120)},
-    profile:{id:choice(p.id,['desktop-v1'],'baseline profile ID'),samples:p.samples,viewport:{width:positive(viewport.width,'viewport width',8000),height:positive(viewport.height,'viewport height',8000)},deviceScaleFactor:positive(p.deviceScaleFactor,'scale factor',8),locale:string(p.locale,'baseline locale',50),timezoneId:string(p.timezoneId,'baseline time zone',80),sharedWorkers:p.sharedWorkers === undefined ? undefined : choice(p.sharedWorkers,['blocked'],'SharedWorker coverage policy')},
+    profile:{id:choice(p.id,['desktop-v1','mobile-v1','mobile-and-desktop-v1'],'baseline profile ID'),samples:p.samples,viewport:{width:positive(viewport.width,'viewport width',8000),height:positive(viewport.height,'viewport height',8000)},deviceScaleFactor:positive(p.deviceScaleFactor,'scale factor',8),locale:string(p.locale,'baseline locale',50),timezoneId:string(p.timezoneId,'baseline time zone',80),sharedWorkers:p.sharedWorkers === undefined ? undefined : choice(p.sharedWorkers,['blocked'],'SharedWorker coverage policy')},
   };
 }
 function coverageFrom(input: unknown): CoverageEntry {

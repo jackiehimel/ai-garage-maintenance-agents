@@ -115,9 +115,12 @@ export function readDocument(html: string, url: string) {
     return {index:index + 1,status:limited ? 'type-scan-limited' : 'parsed',types:[...types].sort(),reason:limited ? 'JSON-LD type sampling or traversal limit reached' : null};
   });
   if (scripts.length > ENTRY_LIMIT) structuredIncomplete = true;
+  const titleTags = metadata.querySelectorAll('title');
+  const descriptionTags = metadata.querySelectorAll('meta').filter(meta => meta.getAttribute('name')?.toLowerCase() === 'description');
+  if (titleTags.some(tag => tag.text.length > VALUE_LIMIT) || descriptionTags.some(tag => (tag.getAttribute('content')?.length ?? 0) > VALUE_LIMIT)) incomplete = true;
   return {
-    title:clean(metadata.querySelector('title')?.text),
-    description:clean(metadata.querySelectorAll('meta').find(meta => meta.getAttribute('name')?.toLowerCase() === 'description')?.getAttribute('content')),
+    title:clean(titleTags[0]?.text),titleCount:titleTags.length,
+    description:clean(descriptionTags[0]?.getAttribute('content')),descriptionCount:descriptionTags.length,
     canonical,directives,
     jsonLd,structuredCount:scripts.length,incomplete,structuredIncomplete,
   };

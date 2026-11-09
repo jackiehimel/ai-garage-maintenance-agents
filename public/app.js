@@ -44,7 +44,7 @@ const metricNames = {
   'cumulative-layout-shift': 'Cumulative Layout Shift (CLS)',
 };
 
-const allowedConfiguration = new Set(['pages', 'states', 'components', 'ownerPriorities', 'indexIntent', 'release', 'profile', 'supplied']);
+const allowedConfiguration = new Set(['pages', 'states', 'components', 'ownerPriorities', 'indexIntent', 'release', 'profile', 'supplied', 'pageDiscovery']);
 const maxRequestBytes = 3_000_000;
 const maxBaselineBytes = 2_500_000;
 const maxImportBytes = 16_000_000;
@@ -708,85 +708,188 @@ function combinedAddress(reports) {
   window.history.replaceState(null, '', address);
 }
 
-function renderCombined(targetUrl, entries, finished, baselineNote = '') {
+function renderCombinedProgress(targetUrl, entries, finished = false, baselineNote = '') {
   const reports = entries.flatMap(item => item.report ? [item.report] : []);
   const root = document.createDocumentFragment();
   const overview = element('div', 'report-panel report-overview');
-  const title = element('h2', '', 'Website maintenance report');
-  title.id = 'report-title';
-  title.tabIndex = -1;
-  overview.append(element('p', 'eyebrow', 'SEO · Accessibility · Performance'), title);
+  const title = element('h2', '', finished ? 'Your collected results' : 'Reviewing your website');
+  title.id = 'report-title'; title.tabIndex = -1;
+  overview.append(title);
   paragraph(overview, targetUrl, 'report-target');
   paragraph(overview, `${reports.length} of 3 reports returned${finished ? '.' : ' · Checks in progress.'}`);
-  paragraph(overview, finished
-    ? 'Review the measured results and next steps below. A missing or limited report is not a clean bill of health.'
-    : 'The agents run one after another so performance measurements are not affected by the other checks.', 'meta');
   paragraph(overview, baselineNote, 'meta');
-  if (finished && reports.length) {
-    const actions = element('div', 'actions');
-    const message = element('p', 'meta');
-    message.setAttribute('role', 'status');
-    endpointDownload(actions, 'Download combined PDF', `/api/report.pdf?runs=${reports.map(report => report.runId).join(',')}&scope=all`, 'solvd-website-maintenance.pdf', message);
-    overview.append(actions, message);
-  }
+  if (finished) paragraph(overview, 'Your collected reports are saved. The customer summary is currently unavailable. Open an individual result below, or reload after the updated service is running.', 'summary-unavailable');
+  else paragraph(overview, 'We check SEO, accessibility, then performance. Keeping the speed tests separate makes the measurements more reliable.', 'meta');
   root.append(overview);
   const cards = element('div', 'combined-grid');
   for (const item of entries) {
     const card = element('article', 'report-panel combined-card');
     card.append(element('h3', '', agents[item.agentId].title));
-    const report = item.report;
-    if (!report) {
-      const state = item.error ? 'No report available' : item.status;
-      card.append(badge(state, item.error ? 'error' : ''));
-      paragraph(card, item.error || (item.status === 'Running' ? 'Collecting and assessing evidence…' : 'Waiting for the preceding agent to finish.'), 'meta');
-      cards.append(card);
-      continue;
-    }
-    card.append(badge(`Collection: ${statusText(report.collectionStatus)}`, report.collectionStatus === 'complete' ? '' : 'warn'));
-    const facts = element('dl', 'combined-facts');
-    const metrics = report.agentId === 'seo-ai-search' ? [['Measured flags', report.findings.filter(finding => finding.disposition === 'finding').length], ['Human checks needed', report.findings.filter(finding => finding.disposition === 'review-needed').length], ['Completed checks', report.coverage.filter(item => item.status === 'complete').length]] : headlineMetrics(report);
-    for (const [label, value] of metrics) facts.append(element('dt', '', label), element('dd', '', value));
-    card.append(facts);
-    const flagged = report.findings.filter(finding => finding.disposition === 'finding');
-    const reviews = report.findings.filter(finding => finding.disposition === 'review-needed');
-    paragraph(card, flagged.length
-      ? `${flagged.length} measured ${flagged.length === 1 ? 'flag needs' : 'flags need'} attention${reviews.length ? `; ${reviews.length} additional items need human review` : ''}.`
-      : reviews.length ? `${reviews.length} items need human review; these are not confirmed defects.`
-      : report.collectionStatus === 'complete' ? 'No issues were flagged by the completed checks.' : 'No issues were flagged in the evidence collected. Coverage is limited.');
-    const groups = new Map();
-    for (const finding of [...flagged, ...reviews]) {
-      const key = `${finding.disposition}:${finding.rule}`;
-      if (!groups.has(key)) groups.set(key, { finding, count: 0 });
-      groups.get(key).count++;
-    }
-    if (groups.size) {
-      card.append(element('h4', 'combined-next', 'Where to start'));
-      const list = element('ul', 'report-list');
-      for (const { finding, count } of [...groups.values()].slice(0, 3)) {
-        const row = element('li');
-        row.append(element('strong', '', `${finding.title}${count > 1 ? ` (${count} instances)` : ''}`));
-        paragraph(row, finding.disposition === 'review-needed'
-          ? finding.investigate || 'Review the recorded evidence before deciding whether a change is needed.'
-          : finding.correct || finding.investigate || finding.summary);
-        list.append(row);
+    if (item.report) {
+      paragraph(card, 'Evidence collected', 'meta');
+      if (finished) {
+        const link = element('a', 'button secondary', 'Open individual result');
+        link.href = `/?run=${item.report.runId}`; card.append(link);
       }
-      card.append(list);
-      if (groups.size > 3) paragraph(card, `${groups.size - 3} more finding groups are in the detailed report.`, 'meta');
+    } else {
+      card.append(badge(item.error ? 'No result available' : item.status, item.error ? 'error' : ''));
+      paragraph(card, item.error ? 'This check could not finish. The other results have been kept.' : item.status === 'Running' ? 'Collecting and assessing evidence…' : 'Waiting for the preceding agent to finish.', 'meta');
     }
-    const missing = report.coverage.filter(item => item.status !== 'complete');
-    if (missing.length) paragraph(card, `${missing.length} coverage ${missing.length === 1 ? 'entry needs' : 'entries need'} attention. See the detailed report for unavailable, unconfigured or incomplete checks.`, 'meta');
-    paragraph(card, agents[item.agentId].limit, 'meta');
-    paragraph(card, `AI assessment: ${statusText(report.assessment.status)} · Comparison: ${statusText(report.comparison.status)}`, 'meta');
-    paragraph(card, `Checked ${new Date(report.completedAt).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })}`, 'meta');
-    const link = element('a', 'button secondary', 'View detailed report');
-    link.href = `/?run=${report.runId}`;
-    card.append(link);
     cards.append(card);
   }
-  root.append(cards);
-  reportPanel.replaceChildren(root);
-  reportPanel.hidden = false;
-  if (finished && (document.activeElement === document.body || document.activeElement === runButton)) title.focus();
+  root.append(cards); reportPanel.replaceChildren(root); reportPanel.hidden = false;
+}
+
+const customerTone = tone => ['good', 'attention', 'limited'].includes(tone) ? tone : 'limited';
+
+function renderCustomerReport(view, reports, baselineNote = '') {
+  const root = document.createDocumentFragment();
+  const overview = element('div', 'report-panel customer-overview');
+  overview.append(element('p', 'eyebrow', 'Solvd website review'));
+  const title = element('h2', '', 'Your website at a glance');
+  title.id = 'report-title'; title.tabIndex = -1; overview.append(title);
+  paragraph(overview, view.targetUrl, 'report-target');
+  paragraph(overview, view.headline, 'customer-headline');
+  paragraph(overview, view.dateLabel, 'meta');
+  const cards = element('div', 'verdict-grid');
+  for (const section of view.sections) {
+    const card = element('article', 'verdict-card'); card.dataset.tone = customerTone(section.rating.tone);
+    card.append(element('h3', '', section.title));
+    if (Number.isFinite(section.rating.score)) {
+      const score = element('div', 'customer-score');
+      score.append(element('strong', '', section.rating.score), element('span', '', '/ 100')); card.append(score);
+    }
+    paragraph(card, section.rating.label, 'verdict-label');
+    paragraph(card, section.headline, 'verdict-summary');
+    paragraph(card, section.rating.basis, 'verdict-basis');
+    const link = element('a', 'text-link', 'See findings and next steps'); link.href = `#customer-${section.agentId}`; card.append(link);
+    cards.append(card);
+  }
+  overview.append(cards);
+  const actions = element('div', 'actions');
+  const message = element('p', 'meta'); message.setAttribute('role', 'status');
+  endpointDownload(actions, 'Download combined PDF', `/api/report.pdf?runs=${reports.map(report => report.runId).join(',')}&scope=all`, 'solvd-website-maintenance.pdf', message);
+  overview.append(actions, message);
+  paragraph(overview, view.key, 'customer-key');
+  paragraph(overview, baselineNote, 'meta'); root.append(overview);
+
+  for (const section of view.sections) {
+    const panel = element('section', 'report-panel customer-section');
+    panel.id = `customer-${section.agentId}`;
+    const heading = element('h2', '', section.title); heading.id = `${panel.id}-title`;
+    panel.setAttribute('aria-labelledby', heading.id); panel.append(heading);
+    const label = element('p', 'section-verdict', section.rating.label); label.dataset.tone = customerTone(section.rating.tone); panel.append(label);
+    paragraph(panel, section.headline, 'customer-headline');
+    if (section.metrics.length) {
+      const metrics = element('div', 'customer-metrics');
+      for (const item of section.metrics) {
+        const metric = element('div', 'customer-metric'); metric.dataset.tone = customerTone(item.tone);
+        paragraph(metric, item.label, 'metric-label'); paragraph(metric, item.value, 'metric-value'); paragraph(metric, item.interpretation, 'metric-meaning'); metrics.append(metric);
+      }
+      panel.append(metrics);
+    }
+    for (const samples of section.sampleScores) {
+      if (!samples.values.length) continue;
+      const figure = element('figure', 'sample-chart'); figure.append(element('figcaption', '', samples.label));
+      const bars = element('div', 'sample-bars');
+      for (const [index, value] of samples.values.entries()) {
+        if (!Number.isFinite(value)) continue;
+        const row = element('div', 'sample-row');
+        row.append(element('span', '', `Run ${index + 1}`));
+        const track = element('span', 'sample-track');
+        const bar = element('span', 'sample-fill'); bar.setAttribute('style', `width:${Math.min(100, Math.max(0, value))}%`); track.append(bar);
+        track.setAttribute('aria-hidden', 'true'); row.append(track, element('strong', '', `${value} / 100`)); bars.append(row);
+      }
+      figure.append(bars); panel.append(figure);
+    }
+    if (section.positives.length) {
+      const positives = element('div', 'customer-positives'); positives.append(element('h3', '', 'What is working well')); itemList(positives, section.positives); panel.append(positives);
+    }
+    for (const finding of section.findings) {
+      const item = element('article', 'customer-finding'); item.dataset.kind = finding.kind;
+      paragraph(item, finding.kind === 'review' ? 'Needs review' : finding.kind === 'observation' ? 'Observation' : 'Finding', 'finding-kind');
+      item.append(element('h3', '', finding.title));
+      paragraph(item, finding.impact, 'finding-impact');
+      if (finding.where.length) paragraph(item, `Where: ${finding.where.join('; ')}`, 'finding-where');
+      paragraph(item, finding.recommendation, 'finding-action');
+      const handoff = [finding.owner && `Suggested owner: ${finding.owner}`, finding.effort && `Effort: ${finding.effort}`].filter(Boolean);
+      if (handoff.length) paragraph(item, handoff.join(' · '), 'meta');
+      if (finding.verification) paragraph(item, `How to check the result: ${finding.verification}`, 'finding-check');
+      panel.append(item);
+    }
+    if (section.reviewGroups.length) {
+      const followup = element('div', 'customer-followup'); followup.append(element('h3', '', 'What Solvd can review next'));
+      for (const group of section.reviewGroups) {
+        const count = Number.isFinite(group.count) && group.count > 0 ? ` · ${group.count} item${group.count === 1 ? '' : 's'}` : '';
+        const item = element('div', 'review-group'); item.append(element('h4', '', `${group.title}${count}`)); paragraph(item, group.body); followup.append(item);
+      }
+      panel.append(followup);
+    }
+    if (section.images.length) {
+      const gallery = element('div', 'customer-images');
+      for (const image of section.images) {
+        if (!validRunId(image.runId) || !/^art_[a-f0-9]{24}$/.test(image.artifactId)) continue;
+        const figure = element('figure'); const img = element('img');
+        const embedded = typeof image.dataUrl === 'string' && image.dataUrl.length < 2_000_000 && /^data:image\/(?:jpeg|png);base64,[A-Za-z0-9+/=]+$/.test(image.dataUrl);
+        img.src = embedded ? image.dataUrl : `/api/runs/${image.runId}/artifacts/${image.artifactId}`; img.alt = image.caption; img.loading = 'lazy';
+        figure.append(img, element('figcaption', '', image.caption)); gallery.append(figure);
+      }
+      panel.append(gallery);
+    }
+    paragraph(panel, section.comparison, 'customer-comparison');
+    if (section.agentAssessment?.text) {
+      const assessment = element('aside', 'customer-agent-assessment');
+      assessment.append(element('h3', '', section.agentAssessment.label));
+      paragraph(assessment, section.agentAssessment.text);
+      paragraph(assessment, section.agentAssessment.note, 'meta');
+      panel.append(assessment);
+    }
+    paragraph(panel, [section.scope, section.limits].filter(Boolean).join(' '), 'customer-limits');
+    const report = reports.find(report => report.agentId === section.agentId);
+    if (report) {
+      const link = element('a', 'technical-link', 'Technical evidence and baseline'); link.href = `/?run=${report.runId}`; panel.append(link);
+    }
+    root.append(panel);
+  }
+  const next = element('section', 'report-panel customer-next-step'); next.append(element('p', 'eyebrow', 'Your next step'), element('h2', '', view.nextStep.title));
+  paragraph(next, view.nextStep.body, 'customer-headline'); itemList(next, view.nextStep.items); root.append(next);
+  reportPanel.replaceChildren(root); reportPanel.hidden = false;
+  if (document.activeElement === document.body || document.activeElement === runButton) title.focus();
+}
+
+function isCustomerReport(view, target) {
+  return view && new URL(view.targetUrl).href === new URL(target).href && typeof view.headline === 'string' &&
+    Array.isArray(view.sections) && view.sections.length === 3 && new Set(view.sections.map(section => section.agentId)).size === 3 &&
+    view.sections.every(section => Object.hasOwn(agents, section.agentId) && section.rating && typeof section.rating.label === 'string' &&
+      ['findings','reviewGroups','positives','metrics','sampleScores','images'].every(key => Array.isArray(section[key]))) &&
+    view.nextStep && typeof view.nextStep.title === 'string' && Array.isArray(view.nextStep.items);
+}
+
+async function showCustomerReport(target, entries, current, baselineNote = '') {
+  const reports = entries.flatMap(item => item.report ? [item.report] : []);
+  if (!reports.length) { renderCombinedProgress(target, entries, true, baselineNote); return false; }
+  runStatus.textContent = 'Preparing your website review…';
+  try {
+    const response = await fetch(`/api/report-summary?runs=${reports.map(report => report.runId).join(',')}&scope=all`, { cache: 'no-store', credentials: 'same-origin', signal: current.controller.signal });
+    const view = await response.json();
+    if (activeRun !== current) return false;
+    if (!response.ok || !isCustomerReport(view, target)) throw new Error('Customer summary unavailable');
+    renderCustomerReport(view, reports, baselineNote); return true;
+  } catch {
+    if (activeRun !== current) return false;
+    renderCombinedProgress(target, entries, true, baselineNote); return false;
+  }
+}
+
+function requestConfiguration(configuration, agentId) {
+  const input = { ...configuration };
+  if (agentId === 'performance') input.profile = { id: 'mobile-and-desktop-v1', ...configuration.profile };
+  else if (configuration.profile) {
+    const { id, samples, ...profile } = configuration.profile;
+    input.profile = profile;
+  }
+  if (agentId !== 'seo-ai-search') delete input.pageDiscovery;
+  return input;
 }
 
 function allRequests(configuration, targetUrl, baseline) {
@@ -798,11 +901,7 @@ function allRequests(configuration, targetUrl, baseline) {
   }
   if (baseline && !Object.hasOwn(agents, baseline.identity?.agentId)) throw new Error('The selected baseline does not identify a supported agent.');
   return Object.keys(agents).map(agentId => {
-    const request = { ...configuration, agentId, targetUrl };
-    if (configuration.profile && agentId !== 'performance') {
-      const { samples, ...profile } = configuration.profile;
-      request.profile = profile;
-    }
+    const request = { ...requestConfiguration(configuration, agentId), agentId, targetUrl };
     if (baseline?.identity.agentId === agentId) request.baseline = baseline;
     return request;
   });
@@ -839,7 +938,7 @@ async function runAll(requests, current, baseline) {
     if (activeRun !== current) return;
     entries[index].status = 'Running';
     runStatus.textContent = `Running ${index + 1} of 3: ${agents[request.agentId].title}.`;
-    renderCombined(request.targetUrl, entries, false, baselineNote);
+    renderCombinedProgress(request.targetUrl, entries, false, baselineNote);
     try {
       const report = await requestReport(request, current.controller.signal);
       if (activeRun !== current) return;
@@ -850,9 +949,10 @@ async function runAll(requests, current, baseline) {
       entries[index].error = error instanceof Error ? error.message : 'This agent did not return a report.';
     }
   }
-  renderCombined(requests[0].targetUrl, entries, true, baselineNote);
+  const ready = await showCustomerReport(requests[0].targetUrl, entries, current, baselineNote);
+  if (activeRun !== current) return;
   const returned = entries.filter(item => item.report).length;
-  runStatus.textContent = `${returned} of 3 reports returned. ${returned === 3 ? 'The combined PDF is ready.' : returned ? 'The combined PDF includes the available results and identifies missing reports.' : 'No reports are available. Review the errors below and try again.'}`;
+  runStatus.textContent = `${returned} of 3 reports returned. ${ready ? 'Your website review and PDF are ready.' : 'The customer summary is unavailable; collected results are preserved below.'}`;
 }
 
 function updateBaselineSelection() {
@@ -947,7 +1047,7 @@ form.addEventListener('submit', async (event) => {
       await runAll(requests, current, baseline);
       return;
     }
-    const request = { ...configuration, agentId, targetUrl, ...(baseline ? { baseline } : {}) };
+    const request = { ...configuration, ...(agentId === 'performance' ? { profile: { id: 'mobile-and-desktop-v1', ...configuration.profile } } : {}), agentId, targetUrl, ...(baseline ? { baseline } : {}) };
     stage = 'running';
     const worker = runtimeMode === 'github-actions' ? ' through GitHub Actions' : '';
     runStatus.textContent = `Requested ${agents[agentId].title}${worker}. Waiting for the report… ${previousReportStatus}`.trimEnd();
@@ -1013,9 +1113,10 @@ function restoreRunInputs(result) {
   if (pages?.length) extras.pages = pages;
   if (configuration.release) extras.release = configuration.release;
   if (configuration.supplied) extras.supplied = configuration.supplied;
-  if (result.agentId === 'performance' && [4, 5].includes(configuration.profile?.samples)) {
-    extras.profile = { samples: configuration.profile.samples };
+  if (result.agentId === 'performance' && configuration.profile) {
+    extras.profile = { id: configuration.profile.id, samples: configuration.profile.samples };
   }
+  if (result.agentId === 'seo-ai-search' && configuration.pageDiscovery) extras.pageDiscovery = configuration.pageDiscovery;
   configField.value = Object.keys(extras).length ? JSON.stringify(extras, null, 2) : '';
 }
 
@@ -1045,19 +1146,22 @@ async function loadCombinedReports(value) {
       throw new Error('A combined report must contain distinct agents for the same entered URL.');
     }
     restoreRunInputs(reports[0]);
+    const configuration = parseConfiguration(configField.value);
+    const seo = reports.find(report => report.agentId === 'seo-ai-search');
+    if (seo?.configuration.pageDiscovery) configuration.pageDiscovery = seo.configuration.pageDiscovery;
     const performance = reports.find(report => report.agentId === 'performance');
     if (performance?.configuration.profile?.samples) {
-      const configuration = parseConfiguration(configField.value);
-      configuration.profile = { samples: performance.configuration.profile.samples };
-      configField.value = JSON.stringify(configuration, null, 2);
+      configuration.profile = { id: performance.configuration.profile.id, samples: performance.configuration.profile.samples };
     }
+    configField.value = Object.keys(configuration).length ? JSON.stringify(configuration, null, 2) : '';
     for (const option of form.querySelectorAll('input[name="agent"]')) option.checked = option.value === 'all';
     const entries = Object.keys(agents).map(agentId => {
       const report = reports.find(report => report.agentId === agentId);
       return report ? { agentId, report } : { agentId, error: 'No saved report is available for this agent in this combined view.' };
     });
-    renderCombined(reports[0].submittedUrl, entries, true);
-    runStatus.textContent = `${reports.length} of 3 reports returned. Saved results loaded; check each collection date.`;
+    const ready = await showCustomerReport(reports[0].submittedUrl, entries, current);
+    if (activeRun !== current) return;
+    runStatus.textContent = `${reports.length} of 3 reports returned. ${ready ? 'Saved website review loaded.' : 'The customer summary is unavailable; collected results are preserved below.'}`;
   } catch (error) {
     if (activeRun !== current) return;
     showError(error instanceof Error ? error.message : 'The combined report could not be loaded.');

@@ -32,6 +32,14 @@ test('saved report PDF downloads through the local API with origin and selection
     assert.equal(result.headers.get('content-type'),'application/pdf');
     assert.match(result.headers.get('content-disposition')??'',/attachment.*\.pdf/);
     assert.equal(Buffer.from(await result.arrayBuffer()).subarray(0,5).toString(),'%PDF-');
+    const summary=await fetch(`http://127.0.0.1:${port}/api/report-summary?runs=${report.runId}&scope=all`);
+    assert.equal(summary.status,200);
+    const view=await summary.json();
+    assert.equal(view.sections.length,3);
+    const accessibility=view.sections.find((section:{agentId:string})=>section.agentId==='accessibility');
+    assert.equal(accessibility.rating.tone,'attention');
+    assert.match(accessibility.headline,/7/);
+    assert.doesNotMatch(JSON.stringify(view),/#selector-|Scanner color-contrast|Invalid assessment|state initial/);
     assert.equal((await fetch(endpoint,{headers:{Origin:'https://untrusted.com'}})).status,403);
     assert.equal((await fetch(`http://127.0.0.1:${port}/api/report.pdf?runs=invalid`)).status,400);
     assert.equal((await fetch(`http://127.0.0.1:${port}/api/report.pdf?runs=run_aaaaaaaaaaaaaaaaaaaaaaaa`)).status,404);

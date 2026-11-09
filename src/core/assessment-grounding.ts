@@ -1,9 +1,10 @@
-import type { AssessmentAction, AssessmentClassification, AssessmentCounts, AssessmentFact, AssessmentHypothesis, AssessmentParameters, CollectorResult, Evidence, Priority, ValidatedRequest } from './types.js';
+import type { AssessmentAction, AssessmentClassification, AssessmentCounts, AssessmentFact, AssessmentHypothesis, AssessmentParameters, CollectorResult, Comparison, Evidence, Priority, ValidatedRequest } from './types.js';
 import { LAB_METRICS } from '../agents/performance-measurements.js';
 
 export const assessmentPriorities: Priority[] = ['critical','high','medium','low','info'];
 const unique = <T>(values: T[]) => [...new Set(values)];
 const bytes = (value: unknown) => new TextEncoder().encode(JSON.stringify(value)).length;
+const customerEvidenceKinds = new Set(['seo.page-quality','seo.sample-summary','navigation-distribution','navigation-diagnostic','supplied-field-measurement']);
 
 function classification(evidence: Evidence[]): AssessmentClassification {
   const records = evidence.map(e=>e.data).filter(x=>x && typeof x==='object' && !Array.isArray(x));
@@ -39,6 +40,20 @@ function measuredParameters(evidence: Evidence[]): AssessmentParameters {
           if (distribution?.unit === unit) for (const statistic of ['median','min','max','spread']) addQuantity(metric,unit,distribution[statistic]);
         } else if (e.kind === 'navigation-sample' && data?.status === 'collected') {
           addQuantity(metric,unit,metrics[metric]);
+        }
+      }
+      const diagnostics=data?.status==='collected'
+        ? e.kind==='navigation-diagnostic' ? [data] : e.kind==='navigation-sample' && Array.isArray(data.diagnostics) ? data.diagnostics.map(recordOf).filter(x=>x!==undefined) : []
+        : [];
+      for(const diagnostic of diagnostics) {
+        const auditId=e.kind==='navigation-diagnostic'?diagnostic.auditId:diagnostic.id;
+        if(typeof auditId!=='string') continue;
+        addQuantity(`${auditId}:estimatedSavings:${diagnostic.estimatedSavingsMetric??'unspecified'}`,'ms',diagnostic.estimatedSavingsMs);
+        addQuantity(`${auditId}:longestChainDuration`,'ms',diagnostic.longestChainMs);
+        for(const [index,resource] of (Array.isArray(diagnostic.resources)?diagnostic.resources.map(recordOf):[]).entries()) {
+          if(!resource || typeof resource.url!=='string') continue;
+          for(const key of ['totalBytes','transferBytes','estimatedSavingsBytes']) addQuantity(`${auditId}:resource-${index+1}:${key}`,'bytes',resource[key]);
+          for(const key of ['durationMs','completionTimeMs','estimatedSavingsMs']) addQuantity(`${auditId}:resource-${index+1}:${key}`,'ms',resource[key]);
         }
       }
     }
@@ -89,12 +104,15 @@ export function measuredAssessmentSummary(request: ValidatedRequest,result: Coll
   return `${c.findingInstances} finding instances: ${automatic}, ${d['review-needed']??0} review-needed, ${d.intentional??0} intentional, ${d.observation??0} observations. Coverage: ${q.complete??0} complete, ${q.incomplete??0} incomplete, ${q.unavailable??0} unavailable, ${q['not-configured']??0} not configured. Counts describe collected records, not site-wide completeness or conformance.`;
 }
 
-export function buildAssessmentGrounding(request: ValidatedRequest,result: CollectorResult) {
+export interface AssessmentContext { comparison?: Comparison }
+
+export function buildAssessmentGrounding(request: ValidatedRequest,result: CollectorResult,context: AssessmentContext = {}) {
   const fullReportCounts=counts(result);
   const findingEvidence=new Set(result.findings.flatMap(f=>f.evidenceIds));
   const evidence:Evidence[]=[];
   let evidenceBytes=0;
-  for(const e of [...result.evidence].sort((a,b)=>Number(findingEvidence.has(b.id))-Number(findingEvidence.has(a.id)))) {
+  const evidenceRank=(e:Evidence)=>customerEvidenceKinds.has(e.kind)?0:findingEvidence.has(e.id)?1:2;
+  for(const e of [...result.evidence].sort((a,b)=>evidenceRank(a)-evidenceRank(b))) {
     // Whole records only: a sliced excerpt cannot authorize facts hidden in its omitted tail.
     const size=bytes(e);
     if(size>5000 || evidenceBytes+size>24000 || evidence.length>=60 || evidence.some(x=>x.id===e.id)) continue;
@@ -104,6 +122,35 @@ export function buildAssessmentGrounding(request: ValidatedRequest,result: Colle
   const facts:AssessmentFact[]=[{id:'aggregate:report',kind:'aggregate',counts:fullReportCounts,evidenceIds:[],provenance:[]}];
   let factBytes=bytes(facts);
   const add=(f:AssessmentFact)=>{const size=bytes(f);if(facts.length>=80 || size>5000 || factBytes+size>26000 || facts.some(x=>x.id===f.id)) return false;facts.push(f);factBytes+=size;return true;};
+  let contextTruncated=false,contextBytes=0;
+  const addContext=(f:AssessmentFact)=>{const size=bytes(f);if(contextBytes+size>8000)return false;const added=add(f);if(added)contextBytes+=size;return added;};
+  if(request.release) {
+    if(!addContext({id:'context:release',kind:'context',contextKind:'release',scope:{page:request.targetUrl},summary:'Owner-supplied release context; not proof of causation.',
+      data:{...request.release},evidenceIds:[],provenance:[{kind:'supplied',name:'Owner-provided release context'}]})) contextTruncated=true;
+  }
+  if(context.comparison) {
+    const comparison=context.comparison;
+    const findingCounts:Record<string,number>={};
+    for(const change of comparison.findings) findingCounts[change.status]=(findingCounts[change.status]??0)+1;
+    if(!addContext({id:'comparison:summary',kind:'context',contextKind:'comparison',scope:{page:result.testedUrl},
+      summary:`Calculated baseline comparison: ${comparison.status}.`,
+      data:{status:comparison.status,reasons:comparison.reasons.slice(0,8).map(reason=>reason.slice(0,600)),findingCounts},evidenceIds:[],
+      provenance:[{kind:'measured',name:'Server comparison against the supplied baseline'}]}))contextTruncated=true;
+    for(const [index,change] of (comparison.metrics??[]).slice(0,24).entries()) {
+      const quantities=['before','after','delta','threshold','beforeSpread','afterSpread'].flatMap(key=>{
+        const value=change[key as keyof typeof change];return typeof value==='number'&&Number.isFinite(value)?[{metric:change.metric,unit:change.unit,value}]:[];
+      });
+      const added=addContext({id:`comparison:metric:${index}`,kind:'context',contextKind:'comparison',scope:{page:change.page,...(change.profileId?{state:change.profileId==='mobile-v1'?'mobile':'desktop'}:{})},
+        summary:`Calculated ${change.metric} change is ${change.status}.`,data:{...change},evidenceIds:[],
+        provenance:[{kind:'measured',name:'Server metric comparison against the supplied baseline'}],
+        measuredParameters:{colors:[],contrastRatios:[],quantities}});
+      if(!added) contextTruncated=true;
+    }
+    if((comparison.metrics?.length??0)>24 || comparison.reasons.length>8 || comparison.reasons.some(reason=>reason.length>600)) contextTruncated=true;
+  }
+  const addObservation=(e:Evidence)=>add({id:`observation:${e.id}`,kind:'observation',evidenceId:e.id,scope:e.scope,observationKind:e.kind,summary:e.summary,evidenceIds:[e.id],provenance:[e.source],measuredParameters:measuredParameters([e])});
+  // Keep concrete page quality and resource measurements citable even when coverage has many rows.
+  for(const e of evidence.filter(e=>customerEvidenceKinds.has(e.kind))) addObservation(e);
   const coverage=new Map(result.coverage.map(c=>[c.id,c]));
   for(const f of result.findings) {
     if(!f.evidenceIds.length || f.evidenceIds.some(id=>!byId.has(id)) || f.coverageIds.some(id=>!coverage.has(id))) continue;
@@ -115,8 +162,8 @@ export function buildAssessmentGrounding(request: ValidatedRequest,result: Colle
   }
   for(const c of result.coverage) add({id:`coverage:${c.id}`,kind:'coverage',coverageId:c.id,scope:c.scope,subject:c.subject,status:c.status,
     ...(c.reason===undefined?{}:{reason:c.reason}),...(c.data===undefined?{}:{data:c.data}),evidenceIds:[],provenance:[{kind:'measured',name:'Collector coverage record'}]});
-  for(const e of evidence) add({id:`observation:${e.id}`,kind:'observation',evidenceId:e.id,scope:e.scope,observationKind:e.kind,summary:e.summary,evidenceIds:[e.id],provenance:[e.source],measuredParameters:measuredParameters([e])});
-  const truncation={evidence:evidence.length<result.evidence.length,findings:facts.filter(f=>f.kind==='finding').length<result.findings.length,
+  for(const e of evidence.filter(e=>!customerEvidenceKinds.has(e.kind))) addObservation(e);
+  const truncation={context:contextTruncated,evidence:evidence.length<result.evidence.length,findings:facts.filter(f=>f.kind==='finding').length<result.findings.length,
     coverage:facts.filter(f=>f.kind==='coverage').length<result.coverage.length,observations:facts.filter(f=>f.kind==='observation').length<evidence.length,
     countGroups:fullReportCounts.byRuleDisposition.omittedGroups>0 || fullReportCounts.byPageState.omittedGroups>0};
   return {fullReportCounts,facts,evidence,truncation};
@@ -129,12 +176,17 @@ function object(input:unknown,required:string[],optional:string[]=[]):Record<str
   if(required.some(k=>!Object.hasOwn(value,k)) || Object.keys(value).some(k=>![...required,...optional].includes(k))) throw new Error('Invalid assessment keys');
   return value;
 }
-function text(value:unknown,max:number):string {
-  if(typeof value!=='string' || !value.trim() || value.length>max) throw new Error('Invalid assessment text');return value.trim();
+export class AssessmentTextError extends Error {}
+function text(value:unknown,max:number,field='text'):string {
+  if(typeof value!=='string') throw new AssessmentTextError(`Invalid assessment text: ${field} must be a string`);
+  const trimmed=value.trim();
+  if(!trimmed) throw new AssessmentTextError(`Invalid assessment text: ${field} must not be empty`);
+  if(trimmed.length>max) throw new AssessmentTextError(`Invalid assessment text: ${field} exceeds ${max} characters (${trimmed.length} received)`);
+  return trimmed;
 }
-function texts(value:unknown,min:number,max:number,length:number):string[] {
+function texts(value:unknown,min:number,max:number,length:number,field='items'):string[] {
   if(!Array.isArray(value) || value.length<min || value.length>max) throw new Error('Invalid assessment array limit');
-  const list=value.map(v=>text(v,length));if(unique(list).length!==list.length) throw new Error('Duplicate assessment values');return list;
+  const list=value.map((v,index)=>text(v,length,`${field}[${index}]`));if(unique(list).length!==list.length) throw new Error('Duplicate assessment values');return list;
 }
 function references(value:unknown,byId:Map<string,AssessmentFact>,min=1):AssessmentFact[] {
   const ids=texts(value,min,8,200);
@@ -157,7 +209,7 @@ function supportsMissingName(facts:AssessmentFact[],grounding:AssessmentGroundin
 // Capture internal signs and separators so parsing can reject compound tokens as a whole.
 const numericToken = /(?<![\d.,+\-−])((?:(?<!\w)|(?=[+\-−]))[\d.,+\-−]*\d)/.source;
 const ratioLiterals = new RegExp(`${numericToken}\\s*:\\s*1\\b`,'g');
-const quantityLiterals = new RegExp(`${numericToken}\\s*(ms|s|%|kb|mb|points|unitless)\\b`,'gi');
+const quantityLiterals = new RegExp(`${numericToken}\\s*(ms|s|%|bytes|kb|mb|points|unitless)\\b`,'gi');
 const thresholdLiterals = new RegExp(`\\b(?:at least|threshold(?: of| to)?|target(?: of| to)?)\\s+${numericToken}`,'gi');
 
 function parseNumericLiteral(literal:string):number {
@@ -198,10 +250,10 @@ function checkGeneratedText(generated:string,supporting:AssessmentFact[],groundi
 export function validateGroundedAssessment(input:unknown,grounding:AssessmentGrounding,request:ValidatedRequest) {
   const value=object(input,['interpretation','claimIds','actions']);
   const byId=new Map(grounding.facts.map(f=>[f.id,f]));
-  const interpretation=text(value.interpretation,1200),claims=references(value.claimIds,byId);
+  const interpretation=text(value.interpretation,1200,'interpretation'),claims=references(value.claimIds,byId);
   checkGeneratedText(interpretation,claims,grounding,'assertion');
   if(!Array.isArray(value.actions) || value.actions.length>3) throw new Error('Invalid assessment action limit');
-  const actions=value.actions.map((raw):AssessmentAction=>{
+  const actions=value.actions.map((raw,index):AssessmentAction=>{
     const a=object(raw,['title','mode','targetFactIds','priority','rationale','steps','verification'],['hypothesis']);
     if(a.mode!=='investigate'&&a.mode!=='propose-correction') throw new Error('Invalid assessment mode');
     if(!assessmentPriorities.includes(a.priority as Priority)) throw new Error('Invalid assessment priority');
@@ -210,7 +262,8 @@ export function validateGroundedAssessment(input:unknown,grounding:AssessmentGro
     const priority=a.priority as Priority;
     if((priority==='high'||priority==='critical') && eligible.length!==targets.length) throw new Error('Assessment priority exceeds target support');
     if(priority==='critical' && !eligible.some(f=>f.kind==='finding'&&f.severity==='critical')) throw new Error('Assessment critical priority is not supported');
-    const title=text(a.title,200),rationale=text(a.rationale,800),steps=texts(a.steps,1,4,300),verification=text(a.verification,500);
+    const prefix=`actions[${index}]`;
+    const title=text(a.title,200,`${prefix}.title`),rationale=text(a.rationale,800,`${prefix}.rationale`),steps=texts(a.steps,1,4,300,`${prefix}.steps`),verification=text(a.verification,500,`${prefix}.verification`);
     // Minimum procedural detail only; this gate does not establish that a proposed procedure is sufficient.
     if(verification.length<25 || !/\b(repeat|rerun|re-run|measure|test|verify|record|inspect|compare|activate|check)\b/i.test(verification)) throw new Error('Assessment requires concrete verification');
     let hypothesis:AssessmentHypothesis|undefined;
@@ -220,7 +273,7 @@ export function validateGroundedAssessment(input:unknown,grounding:AssessmentGro
       const support=references(h.supportingFactIds,byId);
       if(support.some(f=>!targets.some(t=>t.id===f.id))) throw new Error('Assessment hypothesis support is outside action targets');
       if(h.subject==='site' && !support.some(f=>f.kind==='finding'&&f.disposition==='finding')) throw new Error('Assessment scanner-only evidence cannot establish a site cause');
-      hypothesis={subject:h.subject as AssessmentHypothesis['subject'],statement:text(h.statement,600),supportingFactIds:support.map(f=>f.id),missingEvidence:texts(h.missingEvidence,1,4,300)};
+      hypothesis={subject:h.subject as AssessmentHypothesis['subject'],statement:text(h.statement,600,`${prefix}.hypothesis.statement`),supportingFactIds:support.map(f=>f.id),missingEvidence:texts(h.missingEvidence,1,4,300,`${prefix}.hypothesis.missingEvidence`)};
       checkGeneratedText(hypothesis.statement,support,grounding,'hypothesis');
     }
     for(const generated of [title,rationale]) checkGeneratedText(generated,targets,grounding,'assertion');

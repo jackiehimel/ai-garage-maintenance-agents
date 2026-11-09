@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { readFileSync } from 'node:fs';
+import Anthropic from '@anthropic-ai/sdk';
 import { assess } from '../src/core/assessment.js';
 import { validateRequest } from '../src/core/input.js';
 import type { CollectorResult } from '../src/core/types.js';
@@ -24,7 +25,7 @@ const response = (p:any, rule?:string) => ({interpretation:'Inspect the affected
   verification:'Repeat axe on the same page and state and record the computed accessible name.',
 }]});
 
-function provider(t:any, generate:(p:any)=>unknown, options:{stop?:string;error?:string;http?:number}={}) {
+function provider(t:any, generate:(p:any)=>unknown, options:{stop?:string;error?:string|Error;http?:number}={}) {
   for (const key of ['ANTHROPIC_API_KEY','ANTHROPIC_MODEL']) {
     const old=process.env[key]; process.env[key]=key==='ANTHROPIC_MODEL'?'fixture-model':'offline-test-key';
     t.after(()=>{if(old===undefined) delete process.env[key]; else process.env[key]=old;});
@@ -32,7 +33,7 @@ function provider(t:any, generate:(p:any)=>unknown, options:{stop?:string;error?
   const calls:any[]=[];
   t.mock.method(globalThis,'fetch',async (_url:unknown,init?:RequestInit)=>{
     const body=JSON.parse(String(init?.body));const payload=JSON.parse(body.messages[0].content);calls.push({body,payload});
-    if(options.error) throw new Error(options.error);
+    if(options.error) throw typeof options.error==='string'?new Error(options.error):options.error;
     if(options.http) return Response.json({type:'error',error:{type:'api_error',message:'fixture outage'}},{status:options.http});
     const value=generate(payload);
     return Response.json({id:'msg_fixture',type:'message',role:'assistant',model:'actual-fixture-model',stop_reason:options.stop??'end_turn',stop_sequence:null,
@@ -168,4 +169,60 @@ test('missing credentials make no call; malformed, incomplete, timeout and provi
 });
 for(const options of [{stop:'max_tokens'},{error:'request timed out'},{http:503}]) test(`provider failure is unavailable with one attempt: ${JSON.stringify(options)}`,async t=>{
   const calls=provider(t,p=>response(p),options);const r=await assess(request(),fixtures.accessibility);assert.equal(r.status,'unavailable');assert.equal(calls.length,1);
+  if(options.stop && r.status==='unavailable')assert.match(r.reason,/incomplete.*max_tokens/);
+});
+
+
+test('provider schema stays identical across sites while local fact references remain enforced',async t=>{
+  const calls=provider(t,p=>({interpretation:'The available evidence supports a scoped review.',claimIds:[p.facts[0].id],actions:[]}));
+  await assess(request('seo-ai-search'),fixtures.seo);
+  await assess(request(),fixtures.accessibility);
+  assert.deepEqual(calls[0].body.output_config,calls[1].body.output_config);
+});
+
+test('one reformat attempt repairs an overlong field without changing the evidence or losing token usage',async t=>{
+  let attempts=0;
+  const calls=provider(t,p=>{const v=response(p,'button-name');if(attempts++===0)v.interpretation='x'.repeat(1201);return v;});
+  const result=await assess(request(),fixtures.accessibility);
+  assert.equal(result.status,'available');
+  assert.equal(calls.length,2);
+  assert.deepEqual(calls[0].payload,calls[1].payload);
+  assert.equal(calls[1].body.messages.length,3);
+  assert.match(calls[1].body.messages[2].content,/interpretation.*1200/);
+  if(result.status==='available')assert.deepEqual(result.usage,{inputTokens:246,outputTokens:90});
+});
+
+test('repeated malformed text stops after two attempts with a field-specific safe diagnosis',async t=>{
+  const calls=provider(t,p=>({...response(p,'button-name'),interpretation:'x'.repeat(1201)}));
+  const result=await assess(request(),fixtures.accessibility);
+  assert.equal(result.status,'unavailable');assert.equal(calls.length,2);
+  if(result.status==='unavailable')assert.match(result.reason,/interpretation.*1200.*1201/);
+});
+
+test('unsupported claims do not trigger reformat attempts or get silently accepted',async t=>{
+  const calls=provider(t,p=>({...response(p,'button-name'),claimIds:['not-in-ledger']}));
+  const result=await assess(request(),fixtures.accessibility);
+  assert.equal(result.status,'unavailable');assert.equal(calls.length,1);
+});
+
+for(const [error,reason] of [
+  [new Anthropic.APIConnectionTimeoutError(),/timed out/i],
+  [new Anthropic.APIUserAbortError(),/cancelled/i],
+  [new Anthropic.APIConnectionError({message:'Sensitive provider detail is not a report message'}),/connection failed/i],
+] as const)test(`provider errors preserve their category: ${error.constructor.name}`,async t=>{
+  const calls=provider(t,p=>response(p),{error});const result=await assess(request(),fixtures.accessibility);
+  assert.equal(result.status,'unavailable');assert.equal(calls.length,1);
+  if(result.status==='unavailable'){assert.match(result.reason,reason);assert.doesNotMatch(result.reason,/Sensitive/);}
+});
+
+test('calculated comparisons and supplied release context reach synthesis with citable provenance',async t=>{
+  const r=validateRequest({agentId:'performance',targetUrl:'https://solvd.com/',release:{label:'Navigation update',notes:'Changed header assets'}});
+  const calls=provider(t,p=>({interpretation:'The LCP moved from 3.00 s to 2.50 s, but the change is inconclusive.',claimIds:[p.facts.find((f:any)=>f.contextKind==='comparison'&&f.data.metric)?.id??'missing-context'],actions:[]}));
+  const comparison={status:'compatible' as const,reasons:[],findings:[],metrics:[{page:r.targetUrl,metric:'largest-contentful-paint',profileId:'mobile-v1' as const,unit:'ms',status:'inconclusive' as const,before:3000,after:2500,reason:'Observed variation is too large.'}]};
+  const result=await assess(r,empty,undefined,{comparison});
+  assert.equal(result.status,'available');
+  const release=calls[0].payload.facts.find((f:any)=>f.contextKind==='release');
+  assert.equal(release.data.label,'Navigation update');assert.equal(release.provenance[0].kind,'supplied');
+  const change=calls[0].payload.facts.find((f:any)=>f.data?.metric==='largest-contentful-paint');
+  assert.equal(change.data.status,'inconclusive');assert.deepEqual(change.evidenceIds,[]);assert.equal(change.scope.state,'mobile');
 });

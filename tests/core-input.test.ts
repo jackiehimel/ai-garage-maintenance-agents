@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { parsePublicResource, validateRequest } from '../src/core/input.js';
+import { baselineIdentity, parseBaseline } from '../src/core/baseline.js';
 
 test('public target syntax rejects credentials, IP literals, and internal names', () => {
   for (const targetUrl of [
@@ -46,4 +47,25 @@ test('target and resource URLs are bounded after Unicode percent encoding', () =
   assert.throws(() => parsePublicResource('/' + segment,new URL('https://public.example.com/')),/canonical.*length/i);
   const shortUrl = 'https://public.example.com/café';
   assert.equal(validateRequest({agentId:'accessibility',targetUrl:shortUrl}).targetUrl,'https://public.example.com/caf%C3%A9');
+});
+
+test('mobile profiles are explicit and portable without changing the desktop API default', () => {
+  const base={agentId:'performance',targetUrl:'https://public.example.com/'};
+  assert.equal(validateRequest(base).profile.id,'desktop-v1');
+  const mobile=validateRequest({...base,profile:{id:'mobile-v1',samples:4}});
+  assert.equal(mobile.profile.id,'mobile-v1');
+  const identity=baselineIdentity(mobile,{node:'24',browser:'chromium',engine:'test'},mobile.targetUrl);
+  const portable=parseBaseline({schemaVersion:1,identity,coverage:[],evidence:[],findings:[]});
+  assert.equal(portable.identity.profile.id,'mobile-v1');
+  assert.equal(portable.identity.profile.samples,4);
+  assert.equal(validateRequest({...base,profile:{id:'mobile-and-desktop-v1'}}).profile.samples,3);
+  assert.throws(()=>validateRequest({...base,agentId:'accessibility',profile:{id:'mobile-v1'}}),/profile/i);
+});
+
+test('SEO page discovery distinguishes default sampling from explicit configured scope', () => {
+  const base={agentId:'seo-ai-search',targetUrl:'https://public.example.com/'};
+  assert.equal(validateRequest(base).pageDiscovery,'sitemap-sample');
+  assert.equal(validateRequest({...base,pages:['/']}).pageDiscovery,'configured-only');
+  assert.equal(validateRequest({...base,pageDiscovery:'configured-only'}).pageDiscovery,'configured-only');
+  assert.throws(()=>validateRequest({...base,pageDiscovery:'unbounded'}),/discovery/i);
 });

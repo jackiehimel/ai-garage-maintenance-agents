@@ -86,11 +86,11 @@ function configuredUrl(value: unknown, target: URL): string {
 }
 function profile(input: unknown, agentId: AgentId): DeclaredProfile {
   const p = input === undefined ? {} : object(input, ['id','samples'], 'profile');
-  if (p.id !== undefined) choice(p.id, ['desktop-v1'], 'profile ID');
+  const id = choice(p.id ?? 'desktop-v1', agentId === 'performance' ? ['desktop-v1','mobile-v1','mobile-and-desktop-v1'] : ['desktop-v1'], 'profile ID');
   const samples = p.samples ?? 3;
   if (samples !== 3 && samples !== 4 && samples !== 5) throw new Error('Performance samples must be 3, 4 or 5');
   if (agentId !== 'performance' && p.samples !== undefined) throw new Error('Only performance accepts a samples option');
-  return { id:'desktop-v1', samples, viewport:{width:1365,height:768}, deviceScaleFactor:1, locale:'en-US', timezoneId:'UTC', sharedWorkers:'blocked' };
+  return { id, samples, viewport:id === 'mobile-v1' ? {width:412,height:823} : {width:1365,height:768}, deviceScaleFactor:id === 'mobile-v1' ? 1.75 : 1, locale:'en-US', timezoneId:'UTC', sharedWorkers:'blocked' };
 }
 function step(value: unknown): StateStep {
   const s = object(value, ['action','selector','name','equals','key'], 'state action');
@@ -144,8 +144,9 @@ function supplied(input: unknown, page: (value: unknown) => string): SuppliedDat
 }
 
 export function validateRequest(input: unknown): ValidatedRequest {
-  const r = object(boundedJson(input, INPUT_LIMITS.requestBytes, 'Request'), ['agentId','targetUrl','pages','states','components','ownerPriorities','indexIntent','release','profile','supplied','baseline'], 'request');
+  const r = object(boundedJson(input, INPUT_LIMITS.requestBytes, 'Request'), ['agentId','targetUrl','pages','pageDiscovery','states','components','ownerPriorities','indexIntent','release','profile','supplied','baseline'], 'request');
   const agentId = choice(r.agentId, AGENT_IDS, 'agent ID');
+  const pageDiscovery = choice(r.pageDiscovery ?? (agentId === 'seo-ai-search' && r.pages === undefined ? 'sitemap-sample' : 'configured-only'), ['sitemap-sample','configured-only'], 'page discovery');
   const target = parsePublicTarget(r.targetUrl);
   const maxPages = agentId === 'performance' ? INPUT_LIMITS.performancePages : INPUT_LIMITS.pages;
   const extras = optionalList(r.pages, 'configured pages', maxPages).map((entry) => {
@@ -188,7 +189,7 @@ export function validateRequest(input: unknown): ValidatedRequest {
   unique(indexIntent.map((i) => i.page),'index intent page');
   const release = r.release === undefined ? undefined : object(r.release,['label','revision','template','notes'],'release');
   return {
-    agentId,targetUrl:target.href,pages,states,components,ownerPriorities,indexIntent,profile:profile(r.profile,agentId),
+    agentId,targetUrl:target.href,pages,pageDiscovery,states,components,ownerPriorities,indexIntent,profile:profile(r.profile,agentId),
     release:release ? {label:string(release.label,'release label',150),revision:optionalText(release.revision,'release revision',150),template:optionalText(release.template,'release template',150),notes:optionalText(release.notes,'release notes',600)} : undefined,
     supplied:r.supplied === undefined ? undefined : supplied(r.supplied,pageInScope),
     baseline:r.baseline === undefined ? undefined : parseBaseline(r.baseline),

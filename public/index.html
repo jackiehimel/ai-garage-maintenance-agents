@@ -19,9 +19,9 @@
   </header>
   <main id="main" class="wrap" tabindex="-1">
     <div class="hero">
-      <p class="hero-kicker"><span></span> SOLVD MAINTENANCE TOOLS</p>
-      <h1>Website maintenance agents</h1>
-      <p>Enter a public URL. Run all three agents for a combined PDF report, or choose one for a focused check.</p>
+      <p class="hero-kicker"><span></span> SOLVD WEBSITE REVIEW</p>
+      <h1>See how your website is doing</h1>
+      <p>Check SEO, accessibility and speed. Get clear findings, practical next steps and a report to share.</p>
     </div>
 
     <form id="run-form" class="workspace">
@@ -32,7 +32,7 @@
           <p id="agent-description" class="section-intro">Run all three from one URL or use each agent independently.</p>
           <div class="agent-grid">
             <label class="agent-option all-agents">
-              <input type="radio" name="agent" value="all" aria-labelledby="all-name" aria-describedby="all-description">
+              <input type="radio" name="agent" value="all" checked aria-labelledby="all-name" aria-describedby="all-description">
               <span class="agent-card">
                 <span class="card-top"><span class="agent-icon" aria-hidden="true">3</span><span class="radio-indicator" aria-hidden="true"></span></span>
                 <span class="agent-name" id="all-name">Run all three agents</span>
@@ -40,7 +40,7 @@
               </span>
             </label>
             <label class="agent-option">
-              <input type="radio" name="agent" value="seo-ai-search" checked aria-labelledby="seo-name" aria-describedby="seo-description">
+              <input type="radio" name="agent" value="seo-ai-search" aria-labelledby="seo-name" aria-describedby="seo-description">
               <span class="agent-card">
                 <span class="card-top">
                   <span class="agent-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="10.8" cy="10.8" r="5.8"></circle><path d="m15 15 4 4m-11.5-8.2h6.6m-3.3-3.3v6.6"></path></svg></span>
@@ -69,7 +69,7 @@
                   <span class="radio-indicator" aria-hidden="true"></span>
                 </span>
                 <span class="agent-name" id="performance-name">Performance Regression</span>
-                <span class="agent-description" id="performance-description">Collect repeated Lighthouse navigation samples under a consistent desktop profile.</span>
+                <span class="agent-description" id="performance-description">Measure speed on mobile and desktop, and identify resources worth improving.</span>
               </span>
             </label>
           </div>
@@ -83,7 +83,7 @@
               <input id="target-url" name="target-url" type="url" inputmode="url" autocomplete="url" autocapitalize="none" spellcheck="false" maxlength="2048" value="https://solvd.com" aria-describedby="url-help" required>
             </div>
             <button id="run-button" class="button primary" type="submit">
-              <span id="run-button-label">Run check</span>
+              <span id="run-button-label">Run all three</span>
               <svg aria-hidden="true" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 10h12m-5-5 5 5-5 5"></path></svg>
             </button>
           </div>
@@ -94,7 +94,7 @@
             <div class="advanced-body">
               <div>
                 <label class="field-label" for="configuration">Additional configuration (JSON)</label>
-                <p id="configuration-help" class="field-help">Add same-origin pages, indexing intent, accessibility states, or a performance sample count. Leave blank for a check of the entered page with default settings. All-three mode accepts up to three pages including the entered URL and applies a custom sample count only to performance.</p>
+                <p id="configuration-help" class="field-help">Add same-origin pages, indexing intent, accessibility states, or a performance sample count. Leave blank to sample key SEO pages and test performance on mobile and desktop. All-three mode accepts up to three configured pages including the entered URL. Custom performance settings apply only to that agent.</p>
                 <textarea id="configuration" rows="5" spellcheck="false" maxlength="3000000" placeholder='{ "pages": ["/about"] }' aria-describedby="configuration-help"></textarea>
               </div>
               <div>
@@ -112,7 +112,7 @@
       </fieldset>
 
       <div class="status-box">
-        <p id="runtime-state" class="field-help"></p>
+        <details class="runtime-details"><summary>Run details</summary><p id="runtime-state" class="field-help"></p></details>
         <p id="run-status" role="status" aria-live="polite" aria-atomic="true"></p>
         <p id="run-error" class="error-message" role="alert" hidden></p>
       </div>

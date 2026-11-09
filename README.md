@@ -8,7 +8,7 @@ Run three independent checks against public HTTPS pages through the standalone S
 | Accessibility Regression | Axe findings and affected elements, configured keyboard states, focus assertions, and manual review coverage |
 | Performance Regression | Repeated desktop Lighthouse navigation, per-sample artifacts, metric distributions, and compatible baseline deltas |
 
-Choose **Run all three agents** to enter one URL and receive a combined summary with a downloadable PDF. The agents run sequentially to keep performance measurements isolated. Individual agent runs remain available. A failed agent does not discard the other results.
+Choose **Run all three agents** to enter one URL and receive a combined summary with a downloadable PDF. The agents run sequentially to keep performance measurements isolated. The customer report puts ratings, plain-language findings and Solvd follow-up first; technical evidence stays in the detailed reports. SEO samples up to three sitemap pages by default and UI performance runs cover mobile and desktop separately. Individual agent runs remain available. A failed agent does not discard the other results.
 
 Each run identifies the tested URL, records incomplete coverage, and separates measured observations from supplied evidence and AI interpretation. Export the HTML report, JSON report, and portable baseline from the interface. See the full scope and delivery checks in [SPEC.md](SPEC.md) and [issue #1](https://github.com/jackiehimel/ai-garage-maintenance-agents/issues/1).
 

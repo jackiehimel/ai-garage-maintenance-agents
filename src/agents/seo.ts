@@ -11,7 +11,8 @@ import type { CollectorOptions, CollectorResult, CoverageEntry, CoverageStatus, 
 import { CRAWLERS, headerDirectives, normalizedHttpUrl, readDocument, readRobots, readSitemap, ROBOTS_BYTES, robotDecision, SEARCH_CRAWLERS, searchNoindex } from './seo-parsing.js';
 
 const agentId = 'seo-ai-search' as const;
-const ENGINE = 'seo-source-rendered-v1';
+const ENGINE = 'seo-source-rendered-v2';
+const DEFAULT_PAGE_SAMPLE = 3;
 const RENDER_CHARS = 1_000_000;
 const SITEMAP_REQUESTS_PER_ORIGIN = 4;
 const SITEMAP_INDEX_DEPTH = 2;
@@ -27,7 +28,7 @@ const isHtml = (contentType: string | undefined, text: string) => contentType
 
 interface Snapshot {
   url: string; status: number; redirects: readonly RedirectHop[]; headers: IncomingHttpHeaders;
-  html?: string; diagnostics: string[]; requestFailures?: BrowserFailureDiagnostics; reason?: string; networkReason?: string; navigation?: string; finalConfirmed?: boolean;
+  preview?: Uint8Array; html?: string; diagnostics: string[]; requestFailures?: BrowserFailureDiagnostics; reason?: string; networkReason?: string; navigation?: string; finalConfirmed?: boolean;
 }
 interface Renderer {
   browser: string; driver: string;
@@ -200,6 +201,7 @@ async function browserRenderer(request: ValidatedRequest, options: CollectorOpti
         }
       });
       let html: string | undefined;
+      let preview: Uint8Array | undefined;
       let reason: string | undefined;
       let networkReason = navigation === requested ? undefined : 'Browser started at the verified HTTP redirect destination; the submitted redirect chain was only observed by HTTP.';
       let finalConfirmed = false;
@@ -221,8 +223,15 @@ async function browserRenderer(request: ValidatedRequest, options: CollectorOpti
             const snapshot = await abortable(page.evaluate(captureSeoDocument,RENDER_CHARS),AbortSignal.any([browser.signal,AbortSignal.timeout(4000)]));
             if (!snapshot.html) throw new Error(snapshot.reason ?? 'Rendered SEO snapshot is missing');
             html = snapshot.html;
+            if (main) {
+              try {
+                const bytes = await abortable(page.screenshot({type:'jpeg',quality:60,fullPage:false,timeout:2000}),browser.signal);
+                if (bytes.byteLength <= 1_200_000) preview = bytes;
+              } catch { /* A missing optional preview does not invalidate measured metadata. */ }
+            }
             if (normalizedHttpUrl(page.url()) !== normalizedHttpUrl(location.href)) {
               html = undefined;
+              preview = undefined;
               throw new Error('Page URL changed during the HTML snapshot');
             }
           } else reason = success(response.status()) ? 'Rendered document is not HTML' : `Rendered document returned HTTP ${response.status()}`;
@@ -261,7 +270,7 @@ async function browserRenderer(request: ValidatedRequest, options: CollectorOpti
         if (!response) return {error:reason ?? 'No main document response was returned by Chromium',redirects:[],requestFailures};
         const url = normalizedHttpUrl(page.url()) === normalizedHttpUrl(response.url()) ? page.url() : response.url();
         const redirects = await redirectChain(response).catch((error) => { networkReason = `Browser redirect history incomplete: ${message(error)}`; return []; });
-        return {url,status:response.status(),headers:response.headers(),redirects,html,reason,networkReason,navigation,finalConfirmed,diagnostics:[...diagnostics],requestFailures};
+        return {url,status:response.status(),headers:response.headers(),redirects,html,preview,reason,networkReason,navigation,finalConfirmed,diagnostics:[...diagnostics],requestFailures};
       } finally { await page.close().catch(() => {}); }
     },
   };
@@ -469,12 +478,18 @@ export async function collectSeoEvidence(
       quality || document.incomplete ? 'incomplete' : 'complete',quality ?? (!document ? 'No HTML snapshot was available' : document.incomplete ? 'Document metadata exceeded parse limits' : undefined));
     const structuredCoverage = addCoverage(scope,`${kind} JSON-LD parse and type observations`,!document ? (missing ? 'unavailable' : 'incomplete') :
       quality || document.structuredIncomplete ? 'incomplete' : 'complete',quality ?? (!document ? 'No HTML snapshot was available' : document.structuredIncomplete ? 'JSON-LD sampling or type traversal limit reached' : undefined));
+    const previewIds: string[] = [];
+    if (!missing && document && snapshot.preview) {
+      const id = 'art_' + createHash('sha256').update(scope.page).update(snapshot.preview).digest('hex').slice(0,24);
+      artifacts.set('preview:' + scope.page,{id,scope,label:'Page preview: '+scope.page,mediaType:'image/jpeg',bytes:snapshot.preview});
+      previewIds.push(id);
+    }
     const metadata = addEvidence(scope,`seo.${kind}-metadata`,name,document ? `${kind} canonical and indexing directives` : `${kind} HTML metadata not observed`,{
       title:document?.title ?? null,description:document?.description ?? null,
       canonical:document?.canonical ?? null,metaDirectives:document?.directives ?? null,
       httpDirectives:missing ? null : header.directives,xRobotsTag:missing ? null : header.raw,
       reason:quality ?? null,documentUrl:missing ? null : snapshot.url,
-    });
+    },previewIds.length ? previewIds : undefined);
     const structured = addEvidence(scope,`seo.${kind}-structured-data`,name,document ? `${document.structuredCount} JSON-LD blocks in ${kind} HTML` : `${kind} JSON-LD not observed`,{
       count:document?.structuredCount ?? null,blocks:document?.jsonLd ?? null,reason:quality ?? null,
       coverage:structuredCoverage.status,format:'JSON-LD; syntax and type observations only',
@@ -487,15 +502,33 @@ export async function collectSeoEvidence(
   const origin = new URL(request.targetUrl).origin;
   const first = await fetchSource(client,request.targetUrl,origin,true);
   const canonicalOrigin = 'url' in first ? new URL(first.url).origin : origin;
-  const sources = Promise.all(request.pages.map(({url}) => url === request.targetUrl ? first :
-    fetchSource(client,url,origin,canonicalOrigin !== origin)));
   const sourceSites = new Map<string,Promise<Site>>();
   if (canonicalOrigin !== origin) sourceSites.set(canonicalOrigin,fetchSite(client,canonicalOrigin));
+  const pages = request.pages.map(page => ({...page,source:page.url === request.targetUrl ? 'submitted' : 'configured'}));
+  const discover = request.pageDiscovery === 'sitemap-sample' && pages.length === 1;
+  let availableSitemapUrls = 0;
+  let discoveryReason: string | undefined;
+  if (discover) {
+    const pending = sourceSites.get(canonicalOrigin) ?? fetchSite(client,canonicalOrigin);
+    sourceSites.set(canonicalOrigin,pending);
+    const site = await pending;
+    const known = new Set([request.targetUrl,...('url' in first ? [first.url] : [])]);
+    const candidates = [...site.locations].filter(url => acceptedOrigin(url,canonicalOrigin) && !known.has(url) &&
+      !/\.(?:pdf|jpe?g|png|gif|svg|webp|avif|mp4|zip|xml|json|txt|css|js)(?:$|[?#])/i.test(url));
+    const depth = (url: string) => new URL(url).pathname.split('/').filter(Boolean).length;
+    candidates.sort((a,b) => depth(a)-depth(b) || Number(Boolean(new URL(a).search))-Number(Boolean(new URL(b).search)) || a.localeCompare(b));
+    availableSitemapUrls = candidates.length;
+    for (const url of candidates.slice(0,DEFAULT_PAGE_SAMPLE - 1)) pages.push({url,source:'sitemap'});
+    if (!candidates.length) discoveryReason = 'No additional eligible same-origin pages could be identified in the sampled sitemap documents.';
+    else if (site.sitemapReasons.length) discoveryReason = 'The page sample comes from a limited sitemap traversal; it does not cover the entire site.';
+  }
+  const sources = Promise.all(pages.map(({url,source}) => url === request.targetUrl ? first :
+    fetchSource(client,url,source === 'sitemap' ? canonicalOrigin : origin,source !== 'sitemap' && canonicalOrigin !== origin)));
   const rendered = await start;
   const renders: (Snapshot | FailedSource)[] = [];
   const sourceResults = await sources;
   try {
-    for (const [index,page] of request.pages.entries()) {
+    for (const [index,page] of pages.entries()) {
       const source = sourceResults[index];
       if ('error' in rendered) renders.push({error:rendered.error,redirects:[]});
       else {
@@ -517,7 +550,8 @@ export async function collectSeoEvidence(
     return site;
   };
 
-  for (const [index,page] of request.pages.entries()) {
+  const qualityPages: {page:string;document:DocumentRead;entry:Evidence;coverage:CoverageEntry}[] = [];
+  for (const [index,page] of pages.entries()) {
     const scope = {page:page.url};
     const sourceResult = sourceResults[index];
     const source = layer(scope,'source','error' in sourceResult ? sourceResult : sourceSnapshot(sourceResult));
@@ -535,6 +569,8 @@ export async function collectSeoEvidence(
     const differences = {
       status:compare(observed(source.statusCoverage,source.status),observed(render.statusCoverage,render.status)),
       finalUrl:compare(observed(source.statusCoverage,source.url),observed(render.statusCoverage,render.url)),
+      title:compare(observed(source.metadataCoverage,source.document?.title),observed(render.metadataCoverage,render.document?.title)),
+      description:compare(observed(source.metadataCoverage,source.document?.description),observed(render.metadataCoverage,render.document?.description)),
       canonical:compare(observed(source.metadataCoverage,source.document?.canonical),observed(render.metadataCoverage,render.document?.canonical)),
       metaDirectives:compare(observed(source.metadataCoverage,source.document?.directives),observed(render.metadataCoverage,render.document?.directives)),
       httpDirectives:compare(observed(source.headerCoverage,source.header.directives),observed(render.headerCoverage,render.header.directives)),
@@ -641,6 +677,59 @@ export async function collectSeoEvidence(
       coverage:sitemapCoverage.status,traversalCoverage:sitemapStatus,coverageBasis,
     });
 
+    const readable = render.metadataCoverage.status === 'complete' && render.document ? render :
+      source.metadataCoverage.status === 'complete' && source.document ? source : undefined;
+    if (readable?.document && intent !== 'excluded') {
+      const document = readable.document;
+      const titleStatus = !document.title ? 'missing' : document.titleCount > 1 ? 'multiple' :
+        /^(?:home(?:page)?|index|untitled(?: page)?|welcome(?: to (?:our|the) (?:website|site))?|page(?: \d+)?)$/i.test(document.title) ? 'generic' : 'present';
+      const descriptionStatus = !document.description ? 'missing' : document.descriptionCount > 1 ? 'multiple' :
+        /(?:lorem ipsum|your (?:meta )?description|description (?:goes )?here|insert description)/i.test(document.description) ? 'placeholder' : 'present';
+      const structuredTypes = [...new Set(document.jsonLd.flatMap(block=>block.types))];
+      const structuredStatus = readable.structuredCoverage.status !== 'complete' ? 'limited' : !document.structuredCount ? 'absent' :
+        document.jsonLd.some(block=>['invalid-json','unexpected-top-level'].includes(block.status)) ? 'invalid' :
+        !structuredTypes.length ? 'type-missing' : 'present';
+      const qualityCoverage = addCoverage(scope,'page title and description content checks','complete',undefined,
+        {layer:readable === render ? 'rendered':'source',meaning:'Presence, basic text checks and duplicates are assessed; search relevance and rich-result eligibility are not established.'});
+      const checks: JsonObject[] = [
+        {id:'title',status:titleStatus === 'present'?'pass':titleStatus === 'missing'?'finding':'review',message:
+          titleStatus === 'present'?'A page title is present and passes the basic text checks.':titleStatus === 'missing'?'The page has no usable title.':titleStatus === 'multiple'?'Multiple title elements compete to describe this page.':'The title is generic and does not identify the page topic or business.'},
+        {id:'description',status:descriptionStatus === 'present'?'pass':'review',message:
+          descriptionStatus === 'present'?'A page description is present.':descriptionStatus === 'missing'?'No page description was found.':descriptionStatus === 'multiple'?'Multiple meta descriptions compete to describe this page.':'The description appears to contain placeholder text.'},
+        {id:'structured-data',status:structuredStatus === 'present'?'pass':structuredStatus === 'invalid'?'finding':'review',message:
+          structuredStatus === 'present'?`Readable structured data describes ${structuredTypes.join(', ')}.`:structuredStatus === 'absent'?'No JSON-LD structured data was found.':structuredStatus === 'type-missing'?'Structured data does not identify any entity type.':structuredStatus === 'limited'?'Structured-data inspection was limited.':'Some structured data could not be read as valid JSON.'},
+      ];
+      const entry = addEvidence(scope,'seo.page-quality',readable === render?'Protected Chromium':'DNS-pinned public HTTP','Page-level search presentation and structured-data checks',{
+        pageLabel:document.title || new URL(page.url).pathname,title:document.title,description:document.description,
+        titleCount:document.titleCount,descriptionCount:document.descriptionCount,titleCharacters:document.title.length,descriptionCharacters:document.description.length,
+        titleStatus,descriptionStatus,structuredTypes,structuredBlocks:document.structuredCount,structuredStatus,source:readable === render?'rendered':'source',checks,
+        limits:['Text presence and duplication checks do not establish relevance, search ranking or the wording a search engine will display.',
+          'Structured-data syntax and type checks do not establish rich-result eligibility or factual accuracy.'],
+      },readable.metadata.artifactIds);
+      qualityPages.push({page:page.url,document,entry,coverage:qualityCoverage});
+      if (titleStatus !== 'present') addFinding(scope,'seo.title-'+titleStatus,
+        titleStatus === 'missing'?'Give this page a clear search title':titleStatus === 'generic'?'Make this page title more descriptive':'Choose one clear title for this page',
+        titleStatus === 'missing'?'No usable page title was found in the inspected HTML.':`The inspected page title is “${document.title}”. ${checks[0].message}`,
+        'medium',titleStatus === 'missing'?'finding':'review-needed',[entry],[qualityCoverage],{
+          investigate:'Check the page topic and intended audience, then compare the title with the main page heading.',
+          correct:'Write one concise title that identifies this page’s subject and distinguishes it from other pages.',
+          recheck:'Open the same page after the change and verify that its source and rendered title match the intended wording.',
+        });
+      if (descriptionStatus !== 'present') addFinding(scope,'seo.description-'+descriptionStatus,
+        descriptionStatus === 'missing'?'Add a useful description for this page':descriptionStatus === 'placeholder'?'Replace placeholder description text':'Choose one description for this page',
+        String(checks[1].message),'low','review-needed',[entry],[qualityCoverage],{
+          investigate:'Review what a prospective customer should learn about this page before choosing to visit it.',
+          correct:'Write a specific, accurate description of this page rather than repeating generic site-wide text.',
+          recheck:'Check the source and rendered meta description. Search engines may choose a different snippet.',
+        });
+      if (structuredStatus === 'type-missing') addFinding(scope,'seo.structured-data-type-missing','Describe what this structured data represents',
+        'The readable JSON-LD does not identify an entity type. Review whether it gives search engines useful information about this page.',
+        'low','review-needed',[entry],[readable.structuredCoverage],{
+          investigate:'Identify the business or content represented and check whether the structured data is a complete entity or only a reference.',
+          recheck:'Validate the intended entity type and relevant properties with the search provider’s structured-data test.',
+        });
+    }
+
     const documents = [source,render].filter(x => x.document);
     const canonicalIssues = documents.flatMap(x => {
       const references = x.document!.canonical;
@@ -658,9 +747,9 @@ export async function collectSeoEvidence(
           recheck:'Fetch and render the same URL, then verify that both layers declare the expected canonical.',
         });
     }
-    if (differences.canonical || differences.metaDirectives || differences.httpDirectives || differences.status || differences.finalUrl || differences.jsonLd) {
+    if (differences.title || differences.description || differences.canonical || differences.metaDirectives || differences.httpDirectives || differences.status || differences.finalUrl || differences.jsonLd) {
       addFinding(scope,'seo.source-rendered-difference','Source and rendered search signals differ',
-        'The two collection methods returned different status, final URL, canonical, indexing directives, or JSON-LD observations. Review the evidence to determine whether browser rendering, redirects, or request handling account for the difference.',
+        'The two collection methods returned different titles, descriptions, status, final URL, canonical, indexing directives, or JSON-LD observations. Review the evidence to determine whether browser rendering, redirects, or request handling account for the difference.',
         'low','review-needed',[...pageEvidence,...metadataEvidence,comparisonEvidence],[...pageCoverage,...metadataCoverage],{
           investigate:'Compare the HTTP response and rendered DOM, and check the template or client-side code responsible for each signal.',
           recheck:'Repeat both observations against the same submitted URL and expected document state.',
@@ -687,6 +776,35 @@ export async function collectSeoEvidence(
     }
   }
 
+  const duplicates = (field:'title'|'description') => {
+    const values = new Map<string,typeof qualityPages>();
+    for (const page of qualityPages) {
+      const value = page.document[field].trim().replace(/\s+/g,' ').toLocaleLowerCase('en-US');
+      if (!value) continue;
+      const group = values.get(value) ?? []; group.push(page); values.set(value,group);
+    }
+    return [...values.values()].filter(group=>group.length > 1);
+  };
+  const duplicateTitles = duplicates('title');
+  const duplicateDescriptions = duplicates('description');
+  for (const [field,groups] of [['title',duplicateTitles],['description',duplicateDescriptions]] as const) {
+    for (const group of groups) for (const page of group) addFinding({page:page.page},'seo.'+field+'-duplicate',
+      field === 'title'?'Different pages use the same search title':'Different pages use the same description',
+      `${group.length} sampled pages share this ${field}: “${page.document[field]}”. Review whether they represent distinct content.`,
+      'medium','review-needed',group.map(item=>item.entry),group.map(item=>item.coverage),{
+        investigate:'Compare the sampled pages and their intended topics. Shared wording may be appropriate for deliberate duplicate or consolidated pages.',
+        correct:`For distinct pages, write a specific ${field} that explains each page’s own content.`,
+        recheck:`Rerun the same page sample and confirm that distinct pages have distinguishable ${field}s.`,
+      });
+  }
+  const sampleData = {mode:discover?'sitemap-sample':'configured',pages:pages.map(({url,source})=>({url,source})),limit:discover?DEFAULT_PAGE_SAMPLE:pages.length,availableSitemapUrls,
+    duplicateTitles:duplicateTitles.map(group=>({value:group[0].document.title,pages:group.map(item=>item.page)})),
+    duplicateDescriptions:duplicateDescriptions.map(group=>({value:group[0].document.description,pages:group.map(item=>item.page)})),
+    scopeNote:discoveryReason ?? 'A bounded sample of public pages was inspected; this is not a whole-site audit.'};
+  addEvidence({page:request.targetUrl},'seo.sample-summary','DNS-pinned sitemap discovery and page inspection',`${pages.length} public pages selected for SEO inspection`,sampleData);
+  if (discover) addCoverage({page:request.targetUrl},'public-page sample selection',discoveryReason && !availableSitemapUrls?'incomplete':'complete',discoveryReason,
+    {selectedPages:pages.length,availableSitemapUrls,selection:'Shallower same-origin sitemap URLs, then URLs without query strings, then alphabetical order. Maximum three pages.'});
+
   const records = request.supplied?.searchConsole ?? [];
   const suppliedKeys = new Set<string>();
   for (const record of records) {
@@ -699,16 +817,17 @@ export async function collectSeoEvidence(
       summary:record.observation,data:{observation:record.observation,coverage:record.coverage,window:{start:record.source.start,end:record.source.end}},
     }));
   }
-  for (const {url} of request.pages) {
+  for (const {url} of pages) {
     const count = records.filter(r => r.page === url).length;
     addCoverage({page:url},'owner-supplied Search Console evidence',count ? 'complete' : 'not-configured',
       count ? undefined : 'No Search Console evidence supplied for this page',count ? {records:count} : undefined);
   }
   return {
     testedUrl:confirmedRender ? confirmedRender.url : 'url' in first ? first.url : request.targetUrl,
-    runtime:{node:process.version,engine:ENGINE,browser:'renderer' in rendered ? rendered.renderer.browser : 'unavailable',
+    runtime:{node:process.version,engine:ENGINE + '-' + digest(pages.map(page => page.url)),browser:'renderer' in rendered ? rendered.renderer.browser : 'unavailable',
       browserDriver:'renderer' in rendered ? rendered.renderer.driver : undefined},
     coverage,evidence,findings,artifacts:[...artifacts.values()],diagnostics:[...diagnostics],
+    measurements:{seoSample:{mode:discover?'sitemap-sample':'configured',pages:pages.map(({url,source})=>({url,source})),limit:discover?DEFAULT_PAGE_SAMPLE:pages.length,availableSitemapUrls,scopeNote:discoveryReason??'This is a bounded sample of public pages, not a whole-site audit.'}},
   };
 }
 

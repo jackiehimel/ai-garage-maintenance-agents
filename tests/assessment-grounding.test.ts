@@ -203,3 +203,41 @@ test('hypothesis subjects must be primitive enum strings before scanner-only cau
   assert.throws(()=>validateGroundedAssessment(subjectResponse('site'),g,request),/scanner-only/);
   for(const subject of ['scanner','unknown']) assert.doesNotThrow(()=>validateGroundedAssessment(subjectResponse(subject),g,request));
 });
+
+test('customer-relevant SEO observations survive a crowded coverage ledger with exact original evidence',()=>{
+  const r=fixture();r.findings=[];
+  r.coverage=Array.from({length:90},(_,index)=>({id:`c${index}`,scope,subject:'capture',status:'complete' as const}));
+  const quality={id:'quality',agentId:'seo-ai-search' as const,kind:'seo.page-quality',scope:{page:request.targetUrl},source:{kind:'measured' as const,name:'Rendered page'},summary:'Titles and descriptions were assessed.',data:{title:'Services for retailers',description:'Explore our retail services.',titleStatus:'present',descriptionStatus:'present',structuredTypes:['Organization'],checks:[{id:'title',status:'pass',message:'Specific title present.'}]}};
+  const sample={...quality,id:'sample',kind:'seo.sample-summary',summary:'Key pages sampled from the sitemap.',data:{pages:[{url:request.targetUrl,source:'submitted'}],duplicateTitles:[],duplicateDescriptions:[]}};
+  r.evidence=[...Array.from({length:65},(_,index)=>({...quality,id:`generic${index}`,kind:'capture'})),quality,sample];
+  const g=buildAssessmentGrounding(validateRequest({agentId:'seo-ai-search',targetUrl:request.targetUrl}),r);
+  for(const e of [quality,sample]) {
+    assert.deepEqual(g.evidence.find(record=>record.id===e.id),e);
+    assert.ok(g.facts.some(f=>f.id===`observation:${e.id}`),'selected quality evidence must have a citable fact');
+  }
+  assert.equal(g.truncation.coverage,true);assert.ok(g.facts.length<=80);assert.ok(g.evidence.length<=60);
+});
+
+test('Lighthouse named-resource costs are citable without authorizing counters or missing cost fields',()=>{
+  const {result}=navigationFixture();
+  result.coverage=Array.from({length:85},(_,index)=>({id:`c${index}`,scope,subject:'capture',status:'complete' as const}));
+  result.evidence=[{id:'resources',agentId:'performance',kind:'navigation-diagnostic',scope:{page:request.targetUrl,state:'mobile'},source:{kind:'measured',name:'Lighthouse'},summary:'Image delivery audit reported a possible byte saving.',data:{profileId:'mobile-v1',formFactor:'mobile',status:'collected',auditId:'image-delivery-insight',estimatedSavingsMs:0,estimatedSavingsMetric:'LCP',resources:[{url:'https://example.com/hero-999.jpg',totalBytes:48120,estimatedSavingsBytes:32395}],resourcesTruncated:false,unrelatedCount:777}}];
+  const g=buildAssessmentGrounding(performanceRequest,result);
+  const response=(interpretation:string)=>({interpretation,claimIds:['observation:resources'],actions:[]});
+  const f=g.facts.find(f=>f.id==='observation:resources');assert.ok(f&&f.kind==='observation');assert.equal(f.scope.state,'mobile');
+  assert.doesNotThrow(()=>validateGroundedAssessment(response('The mobile image audit estimates a saving of 32,395 bytes for the recorded image; it recorded 0 ms estimated LCP savings.'),g,performanceRequest));
+  for(const literal of ['777 ms','999 bytes','32395 ms','150 ms']) assert.throws(()=>validateGroundedAssessment(response(`The image saving is ${literal}.`),g,performanceRequest),/unmeasured numerical parameter/,literal);
+  result.evidence[0].source.kind='supplied';
+  const supplied=buildAssessmentGrounding(performanceRequest,result);
+  assert.throws(()=>validateGroundedAssessment(response('The image saving is 32395 bytes.'),supplied,performanceRequest),/unmeasured numerical parameter/);
+});
+
+test('bounded resource evidence remains citable when measured resource URLs are long',()=>{
+  const {result}=navigationFixture();result.findings=[];
+  result.evidence=[{id:'long-resources',agentId:'performance',kind:'navigation-diagnostic',scope:{page:request.targetUrl,state:'desktop'},source:{kind:'measured',name:'Lighthouse'},summary:'Recorded resource timings.',data:{status:'collected',auditId:'render-blocking-insight',resources:Array.from({length:3},(_,index)=>({url:`https://example.com/${'a'.repeat(1000)}?resource=${index}`,totalBytes:10000,transferBytes:9000,durationMs:150,completionTimeMs:350}))}}];
+  const g=buildAssessmentGrounding(performanceRequest,result);
+  assert.deepEqual(g.evidence[0],result.evidence[0]);
+  const observation=g.facts.find(f=>f.id==='observation:long-resources');assert.ok(observation);
+  assert.equal(observation.measuredParameters?.quantities.length,12);
+  assert.doesNotThrow(()=>validateGroundedAssessment({interpretation:'The recorded resource duration is 150 ms.',claimIds:[observation.id],actions:[]},g,performanceRequest));
+});

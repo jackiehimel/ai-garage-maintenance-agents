@@ -26,7 +26,7 @@ export async function runAgent(input:unknown,options:RunOptions={}):Promise<Agen
   if (request.agentId==='performance' && comparison.status==='compatible' && request.baseline) comparison.metrics=comparePerformanceMetrics(result,request.baseline);
   const baseline = createBaseline(identity,result);
   const {baseline:_prior,...configuration}=request;
-  const assessment = options.assessment==='off' ? {status:'unavailable' as const,reason:'Live assessment explicitly disabled for this run'} : await assess(request,result,options.signal);
+  const assessment = options.assessment==='off' ? {status:'unavailable' as const,reason:'Live assessment explicitly disabled for this run'} : await assess(request,result,options.signal,{comparison});
   const report:AgentReport = {
     schemaVersion:1,runId,agentId:request.agentId,submittedUrl:request.targetUrl,testedUrl:result.testedUrl,
     startedAt,completedAt:new Date().toISOString(),runtime:result.runtime,collectionStatus:collectionStatus(result.coverage),configuration,

@@ -8,6 +8,7 @@ import { openRunStore } from './core/store.js';
 import { validateRequest } from './core/input.js';
 import { loadPdfReports, PdfDownloadError } from './pdf-download.js';
 import { renderCombinedPdf } from './pdf-report.js';
+import { buildCustomerReportWithArtifacts } from './customer-report.js';
 import type { AgentReport } from './core/types.js';
 
 const port=Number(process.env.PORT||4175);
@@ -25,13 +26,20 @@ const server=createServer(async(req,res)=>{
     const url=new URL(req.url||'/',`http://${host}`);
     const path=url.pathname;
     if(req.method==='GET' && path==='/api/health') return json(200,{status:'ok',agents:['seo-ai-search','accessibility','performance'],runtime:{mode:remote?'github-actions':'local',browserReady:remote||Boolean(process.env.CHROME_PATH)}});
-    if(req.method==='GET' && path==='/api/report.pdf') {
+    if(req.method==='GET' && (path==='/api/report.pdf' || path==='/api/report-summary')) {
       try {
         const selection=await loadPdfReports(url.searchParams,async id=>{
           const cached=reports.get(id);if(cached)return cached;
           try {const store=await openRunStore(storageRoot,id);return JSON.parse(await store.readReport()) as AgentReport;}catch{return undefined;}
         });
-        const pdf=await renderCombinedPdf(selection.reports,{scope:selection.scope});
+        const loadArtifact=async(runId:string,id:string)=>{
+          const report=selection.reports.find(report=>report.runId===runId);
+          const artifact=report?.artifacts.find(artifact=>artifact.id===id);
+          if(!artifact || !['image/png','image/jpeg','application/json'].includes(artifact.mediaType))return undefined;
+          try {return await (await openRunStore(storageRoot,runId)).readArtifact(id);}catch{return undefined;}
+        };
+        if(path==='/api/report-summary') return json(200,await buildCustomerReportWithArtifacts(selection.reports,{scope:selection.scope,loadArtifact}));
+        const pdf=await renderCombinedPdf(selection.reports,{scope:selection.scope,loadArtifact});
         res.setHeader('Content-Disposition','attachment; filename="solvd-maintenance-report.pdf"');
         return send(200,'application/pdf',pdf);
       } catch(error) {if(error instanceof PdfDownloadError)return json(error.status,{error:error.message});throw error;}

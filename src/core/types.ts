@@ -15,7 +15,7 @@ export interface ComponentConfig { id: string; selector: string; label?: string 
 export interface IndexIntent { page: string; intended: 'indexable' | 'excluded'; note?: string }
 export interface ReleaseContext { label: string; revision?: string; template?: string; notes?: string }
 export interface DeclaredProfile {
-  id: 'desktop-v1';
+  id: 'desktop-v1' | 'mobile-v1' | 'mobile-and-desktop-v1';
   samples: 3 | 4 | 5;
   viewport: { width: number; height: number };
   deviceScaleFactor: number;
@@ -46,13 +46,14 @@ export interface SuppliedData {
 }
 export interface AgentRequest {
   agentId: AgentId; targetUrl: string;
+  pageDiscovery?: 'sitemap-sample' | 'configured-only';
   pages?: Array<string | PageConfig>;
   states?: StateConfig[];
   components?: ComponentConfig[];
   ownerPriorities?: { rule: string; priority: Priority }[];
   indexIntent?: IndexIntent[];
   release?: ReleaseContext;
-  profile?: { id?: 'desktop-v1'; samples?: 3 | 4 | 5 };
+  profile?: { id?: DeclaredProfile['id']; samples?: 3 | 4 | 5 };
   supplied?: SuppliedData;
   baseline?: PortableBaseline | string;
 }
@@ -107,6 +108,7 @@ export interface FindingChange {
 }
 export interface MetricChange {
   page: string; metric: string; status: 'improved' | 'regressed' | 'unchanged' | 'inconclusive';
+  profileId?: 'desktop-v1' | 'mobile-v1';
   unit: string; before?: number; after?: number; delta?: number; threshold?: number;
   beforeSpread?: number; afterSpread?: number; reason?: string;
 }
@@ -140,6 +142,7 @@ export type AssessmentFact = AssessmentFactBase & (
       coverageQuality: CoverageEntry[]; ownerIntent: 'indexable' | 'excluded' | 'unknown' }
   | { kind: 'coverage'; coverageId: string; scope: Scope; subject: string; status: CoverageStatus; reason?: string; data?: JsonObject }
   | { kind: 'observation'; evidenceId: string; scope: Scope; observationKind: string; summary: string }
+  | { kind: 'context'; scope: Scope; contextKind: 'comparison' | 'release'; summary: string; data: JsonObject }
 );
 export interface AssessmentAction {
   title: string; rationale: string; priority: Priority; steps: string[]; evidenceIds: string[];
