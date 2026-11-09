@@ -20,11 +20,11 @@ test('customer PDF gives verdicts and actions without engineering strings or unv
   const seo=report('seo-ai-search');
   const pdf=await renderCombinedPdf([seo,a11y],{scope:'all'});const text=pdfText(pdf);
   assert.equal(pdf.subarray(0,5).toString(),'%PDF-');
-  assert.match(text,/Needs attention/);assert.match(text,/Not assessed/);
+  assert.match(text,/7 findings need attention/);assert.match(text,/Not assessed/);
   assert.match(text,/7 measured findings tied to accessibility requirements/);
   assert.match(text,/3 best-practice suggestions/);assert.match(text,/55 elements/);assert.match(text,/7 elements/);
   assert.match(text,/screen-reader name/);assert.match(text,/Discuss these findings with Solvd/);
-  assert.doesNotMatch(text,/#selector-|Raw scanner|Scanner |Fix any|run_012|UTC|state initial|COMPLETE|Invalid assessment|Historical draft|CRITICAL|HIGH/);
+  assert.doesNotMatch(text,/#selector-|Raw scanner|Scanner |Fix any|run_012|UTC|state initial|COMPLETE|Invalid assessment|Historical draft|CRITICAL|HIGH|Effort:/);
 });
 test('PDF puts real performance score and sample variation in the customer report',async()=>{
   const perf=report('performance');perf.measurements={navigation:{pages:[{page:perf.testedUrl,planned:3,succeeded:3,metrics:{'performance-score':{median:78,min:68,max:86},'largest-contentful-paint':{median:2490.6155}},samples:[68,78,86].map(n=>({metrics:{'performance-score':n}}))}]}};
@@ -44,4 +44,21 @@ test('PDF includes every grouped action when the report spans pages and keeps fo
   a11y.findings=Array.from({length:20},(_,i)=>({...a11y.findings[0],id:`f${i}`,rule:`additional-${i}`,scope:{page:`https://example.com/page-${i}`},evidenceIds:[]}));
   const pdf=await renderCombinedPdf([a11y]);const text=pdfText(pdf);const pages=[...pdf.toString('latin1').matchAll(/\/Type\s*\/Page\b/g)].length;
   assert.ok(pages>3);assert.match(text,/\/page-19/);assert.match(text,new RegExp(`Page ${pages} of ${pages}`));
+});
+
+test('combined PDF leads with measured phone timing and combines device opportunities within six pages',async()=>{
+  const perf=report('performance');
+  perf.measurements={navigation:{pages:['mobile','desktop'].map((device,index)=>({page:perf.testedUrl,formFactor:device,profileId:`${device}-v1`,planned:3,succeeded:3,
+    metrics:{'performance-score':{median:index?79:50},'largest-contentful-paint':{median:index?3224:6593},'total-blocking-time':{median:index?121:1141},'cumulative-layout-shift':{median:0.0001}},
+    samples:[0,1,2].map(()=>({status:'collected',metrics:{'performance-score':index?79:50},diagnostics:[{id:'image-delivery-insight',score:0.5,value:index?20480:10240,unit:'byte',resources:[{url:`https://example.com/assets/${device}-image.webp`,estimatedSavingsBytes:index?20480:10240}]}]}))}))}};
+  const pdf=await renderCombinedPdf([report('seo-ai-search'),accessibilityReport(),perf],{scope:'all'});
+  const text=pdfText(pdf),firstPage=text.split('Page 1 of')[0];
+  assert.match(firstPage,/On phones, your main content appears after\s+6.6 s \(goal: under 2 s\); desktop 3.2 s\./);
+  assert.match(firstPage,/Finding: a problem/);
+  assert.equal((text.match(/Needs review\s+\/\s+Reduce image weight/g)??[]).length,1);
+  assert.match(text,/Mobile: mobile-image.webp \(estimated 10 KB saving\)/);
+  assert.match(text,/Desktop: desktop-image.webp \(estimated 20 KB saving\)/);
+  assert.doesNotMatch(text,/Effort:|\/assets\//);
+  const pages=[...pdf.toString('latin1').matchAll(/\/Type\s*\/Page\b/g)].length;
+  assert.ok(pages<=6,`Expected at most six pages, got ${pages}`);
 });

@@ -812,7 +812,7 @@ function renderCustomerReport(view, reports, baselineNote = '') {
       paragraph(item, finding.impact, 'finding-impact');
       if (finding.where.length) paragraph(item, `Where: ${finding.where.join('; ')}`, 'finding-where');
       paragraph(item, finding.recommendation, 'finding-action');
-      const handoff = [finding.owner && `Suggested owner: ${finding.owner}`, finding.effort && `Effort: ${finding.effort}`].filter(Boolean);
+      const handoff = [finding.owner && `Suggested owner: ${finding.owner}`].filter(Boolean);
       if (handoff.length) paragraph(item, handoff.join(' · '), 'meta');
       if (finding.verification) paragraph(item, `How to check the result: ${finding.verification}`, 'finding-check');
       panel.append(item);

@@ -6,6 +6,7 @@ export type CustomerTone = 'good' | 'attention' | 'limited';
 export interface CustomerFinding {
   title: string; impact: string; where: string[]; recommendation: string; owner: string; effort: string;
   verification: string; count: number; kind: 'finding' | 'review' | 'observation';
+  deviceDetails?: { device: 'Mobile' | 'Desktop'; page: string; impact: string; resources: string[] }[];
 }
 export interface CustomerSection {
   agentId: AgentId; title: string; rating: { label: string; tone: CustomerTone; score?: number; basis: string };
@@ -31,6 +32,9 @@ function unique(values: string[]): string[] { return [...new Set(values.filter(B
 function plural(n: number, noun: string): string { return `${n} ${noun}${n === 1 ? '' : 's'}`; }
 function pageLabel(url: string): string {
   try { const u = new URL(url); const path = decodeURIComponent(u.pathname).replace(/\/$/, ''); return path ? path : 'Homepage'; } catch { return 'Tested page'; }
+}
+function pagePath(url: string): string {
+  try { return new URL(url).pathname; } catch { return pageLabel(url); }
 }
 function evidenceFor(report: AgentReport, finding: Finding): Evidence[] { return report.evidence.filter(e => finding.evidenceIds.includes(e.id)); }
 function checks(evidence: Evidence): Record<string, JsonValue>[] {
@@ -109,7 +113,7 @@ function a11y(report: AgentReport, section: CustomerSection): void {
   const bp = automatic.filter(f => bestPractice(report,f)).length;
   const other = automatic.length - wcag - bp;
   const reviews = report.findings.filter(f => f.disposition === 'review-needed');
-  section.rating = { label:automatic.length ? 'Needs attention' : reviews.length ? 'Review recommended' : 'Sample checks look sound', tone:automatic.length || reviews.length ? 'attention' : 'good',
+  section.rating = { label:wcag + other ? `${plural(wcag + other,'finding')} ${wcag + other === 1 ? 'needs' : 'need'} attention` : bp ? `${plural(bp,'suggestion')} to review` : reviews.length ? `${plural(reviews.length,'item')} ${reviews.length === 1 ? 'needs' : 'need'} review` : 'Sample checks look sound', tone:automatic.length || reviews.length ? 'attention' : 'good',
     basis:`${plural(wcag,'finding')} tied to accessibility requirements${bp ? `; ${plural(bp,'best-practice suggestion')}` : ''}${other ? `; ${plural(other,'additional finding')}` : ''}` };
   section.headline = automatic.length ? `${wcag} measured findings tied to accessibility requirements${bp ? ` and ${bp} best-practice suggestions` : ''}${other ? `, plus ${other} additional findings` : ''} need attention.` : reviews.length ? 'Some accessibility questions need a person to check them.' : 'No accessibility problems were detected by the completed automatic checks.';
   for (const group of grouped(report.findings.filter(f => f.disposition !== 'review-needed'))) {
@@ -125,9 +129,9 @@ function a11y(report: AgentReport, section: CustomerSection): void {
       }))));
       section.findings.push(make(`${plural(group.length,'text element')} with weak contrast`, `Some text is harder to read for people with low vision.${values.length ? ` Measured: ${values.join('; ')}.` : ''}`, 'Adjust text or background colors while preserving the design, then check the resulting contrast.', 'Design + development', 'Focused style change', 'Measure contrast again on each affected element and check hover and focus states.'));
     } else if (rule === 'landmark-unique') {
-      section.findings.push(make('Navigation groups could be easier to distinguish', 'Similar navigation regions can be harder to identify when jumping around the page with a screen reader.', 'Review the navigation groups and give repeated groups distinct, meaningful names where useful.', 'Accessibility specialist + developer', 'Focused review', 'Use the screen-reader landmark list to check that the groups are understandable.'));
+      section.findings.push(make(`${plural(group.length,'navigation-group observation')}: distinguish repeated groups`, 'Similar navigation regions can be harder to identify when jumping around the page with a screen reader.', 'Review the navigation groups and give repeated groups distinct, meaningful names where useful.', 'Accessibility specialist + developer', 'Focused review', 'Use the screen-reader landmark list to check that the groups are understandable.'));
     } else if (rule === 'region') {
-      section.findings.push(make('Review the page structure for screen-reader navigation', 'Some content sits outside the main page regions. Its context determines whether this creates a navigation problem.', 'Review the affected content in the page structure. Preserve working skip links; change the structure only where it improves navigation.', 'Accessibility specialist', 'Focused review', 'Navigate the page by headings and regions and verify the skip link.'));
+      section.findings.push(make(`${plural(group.length,'page-structure observation')}: review screen-reader navigation`, 'Some content sits outside the main page regions. Its context determines whether this creates a navigation problem.', 'Review the affected content in the page structure. Preserve working skip links; change the structure only where it improves navigation.', 'Accessibility specialist', 'Focused review', 'Navigate the page by headings and regions and verify the skip link.'));
     } else if (rule === 'image-alt') {
       section.findings.push(make('Images need a text alternative', 'People who cannot see an informative image may miss its meaning.', 'Describe meaningful images in text; mark purely decorative images so screen readers skip them.', 'Content owner + developer'));
     } else if (rule === 'label') {
@@ -164,8 +168,10 @@ function seo(report: AgentReport, section: CustomerSection): void {
   const actualPages = pages.length ? pages : unique(metadata.map(e => e.scope.page));
   if (actualPages.length) section.scope = `${plural(actualPages.length,'page')} checked: ${actualPages.map(pageLabel).join(', ')}.`;
   const findings = report.findings.filter(f => f.disposition === 'finding' || f.disposition === 'review-needed');
-  section.rating = { label:findings.length ? 'Needs attention' : actualPages.length > 1 ? 'Sample checks look sound' : 'Initial checks look sound', tone:findings.length?'attention':'good',basis:`${plural(actualPages.length || report.configuration.pages.length,'page')} sampled; ${plural(findings.length,'item')} to address` };
-  section.headline = findings.length ? `${plural(findings.length,'search-readiness item')} ${findings.length === 1 ? 'needs' : 'need'} attention across the sampled pages.` : actualPages.length > 1 ? 'The sampled pages have useful search foundations in place.' : 'The homepage has useful search foundations; a wider page sample is the next step.';
+  const measuredCount = findings.filter(f=>f.disposition==='finding').length;
+  const reviewCount = findings.length-measuredCount;
+  section.rating = { label:measuredCount ? `${plural(measuredCount,'finding')} ${measuredCount===1?'needs':'need'} attention` : reviewCount ? `${plural(reviewCount,'item')} ${reviewCount===1?'needs':'need'} review` : actualPages.length > 1 ? 'Sample checks look sound' : 'Initial checks look sound', tone:findings.length?'attention':'good',basis:`${plural(actualPages.length || report.configuration.pages.length,'page')} sampled; ${plural(measuredCount,'finding')}; ${plural(reviewCount,'item')} to review` };
+  section.headline = findings.length ? `${plural(findings.length,'search-readiness item')} ${findings.length === 1 ? 'needs' : 'need'} ${measuredCount?'attention':'review'} across the sampled pages.` : actualPages.length > 1 ? 'The sampled pages have useful search foundations in place.' : 'The homepage has useful search foundations; a wider page sample is the next step.';
   const definitions: Record<string,[string,string,string,string]> = {
     'seo.description-missing':['A page has no search description','This page has no description to explain its content before someone visits.','Write an accurate summary of this page for prospective visitors.','Content + SEO'],
     'seo.http-status':['A page could not be loaded successfully','Visitors and search crawlers may not receive the intended page.','Restore the intended page response or redirect visitors to the right destination.','Website developer'],
@@ -185,8 +191,30 @@ function seo(report: AgentReport, section: CustomerSection): void {
     if (!def && /description/.test(rule)) def=['Search descriptions need attention','A missing or unclear description misses an opportunity to explain the page before someone visits.','Write one accurate, useful description per page.','Content + SEO'];
     if (!def && /structured/.test(rule)) def=['Structured page information needs review','Search engines may receive less useful context about the page.','Review the appropriate structured-data types and validate the markup.','SEO lead + developer'];
     def ??= ['Additional search checks need review','The sampled page has a search-related signal that needs context.','Review the recorded page and agree the intended search behavior before making a change.','SEO lead'];
-    const f=baseFinding(report,group,def[0],def[1],def[2],def[3],'Focused review','Repeat the page checks and confirm the intended search signals.'); f.where=unique(group.map(g=>pageLabel(g.scope.page)));
-    if(rule==='seo.canonical-target'){const targets=unique(group.flatMap(g=>evidenceFor(report,g).flatMap(e=>list(obj(e.data).canonical).map(c=>str(obj(c).url)))));if(targets.length)f.impact+=` Recorded preferred address: ${targets.join('; ')}.`;}
+    const f=baseFinding(report,group,def[0],def[1],def[2],def[3],'Focused review','Repeat the page checks and confirm the intended search signals.'); f.where=unique(group.map(g=>pagePath(g.scope.page)));
+    if(rule==='seo.description-missing') {
+      f.title=f.where.length===1?`No search description on ${f.where[0]}`:`${plural(f.where.length,'page')} without a search description`;
+    }
+    if(rule==='seo.canonical-target') {
+      const targets=unique(group.flatMap(g=>evidenceFor(report,g).flatMap(e=>list(obj(e.data).canonical).map(c=>str(obj(c).url)))));
+      const protocolOnly=group.every(g=>{
+        const metadata=evidenceFor(report,g).filter(e=>Array.isArray(obj(e.data).canonical));
+        const entries=metadata.flatMap(e=>list(obj(e.data).canonical));
+        const addresses=unique(entries.map(c=>str(obj(c).url)));
+        if(addresses.length!==1||!entries.length||entries.some(c=>!str(obj(c).url)))return false;
+        try {
+          const canonical=new URL(addresses[0]);if(canonical.protocol!=='http:')return false;
+          canonical.protocol='https:';
+          return metadata.every(e=>{const observed=new URL(str(obj(e.data).documentUrl)||g.scope.page);return observed.protocol==='https:'&&observed.href===canonical.href;});
+        } catch {return false;}
+      });
+      if(protocolOnly) {
+        f.title='The preferred search address uses HTTP instead of HTTPS';
+        f.impact=`Your page ${f.where.join(', ')} tells search engines its official address is the HTTP version of the same page; it should be HTTPS.`;
+        f.recommendation='Replace the HTTP preferred address with the matching HTTPS address, then check the source and rendered page declarations.';
+      }
+      if(targets.length)f.impact+=` Recorded preferred address: ${targets.join('; ')}.`;
+    }
     section.findings.push(f);
   }
   const goodMeta = metadata.filter(e => str(obj(e.data).title).trim() && str(obj(e.data).description).trim());
@@ -210,12 +238,12 @@ function performance(report: AgentReport, section: CustomerSection): void {
   if (!valid.length) { section.rating={label:'Not enough data',tone:'limited',basis:'No usable navigation score'};section.headline='More measurements are needed to assess page speed.';section.limits='No reliable lab performance score was recorded. A fresh measurement is needed.';return; }
   const primary=valid.find(p=>p.formFactor==='mobile'||p.profileId==='mobile-v1')??valid[0];
   const score=Math.round(num(obj(obj(primary.metrics)['performance-score']).median)!);
-  const device=(p:Record<string,JsonValue>)=>p.formFactor==='mobile'||p.profileId==='mobile-v1'?'Mobile':'Desktop';
+  const device=(p:Record<string,JsonValue>):'Mobile'|'Desktop'=>p.formFactor==='mobile'||p.profileId==='mobile-v1'?'Mobile':'Desktop';
   const devices=unique(valid.map(device));
   section.rating={label:score>=90?'Good lab result':score>=50?'Room to improve':'Needs attention',tone:score>=90?'good':'attention',score,basis:`${device(primary)} Lighthouse median; ${primary.succeeded ?? 0} samples`};
   section.headline=`${device(primary)} performance scored ${score}/100. ${score>=90?'The measured loading experience is in Lighthouse\'s good range.':'There are measurable opportunities to improve the loading experience.'}`;
   section.scope=valid.map(p=>`${device(p)}: ${p.succeeded ?? 0} of ${p.planned ?? '?'} samples on ${pageLabel(str(p.page))}`).join('; ')+'.';
-  const resourceFindings: CustomerFinding[]=[];
+  const resourceFindings = new Map<string,{finding:CustomerFinding;resourceUrls:Set<string>}>();
   for (const page of valid) {
     const label=device(page), metrics=obj(page.metrics), prefix=valid.length>1?`${label} - `:'';
     const median=(name:string)=>num(obj(metrics[name]).median);
@@ -241,13 +269,42 @@ function performance(report: AgentReport, section: CustomerSection): void {
       });
       const image=id==='image-delivery-insight',chain=id==='network-dependency-tree-insight';
       const totalBytes=audits.map(a=>num(a.estimatedSavingsBytes)??(a.unit==='byte'?num(a.value):undefined)).find(v=>v!==undefined&&v>0);
-      const impact=image?`Some images could be delivered more efficiently${totalBytes!==undefined?`; the sampled audit estimates ${Math.round(totalBytes/1024)} KB in potential savings`:''}.`:chain?'The browser waits for a chain of requests before it can finish loading important content.':'Some page resources must load before the browser can draw the content.';
-      resourceFindings.push({title:`${label}: ${image?'Reduce image weight':chain?'Shorten the loading chain':'Review resources that delay drawing'}`,impact,where:names.length?names:[pageLabel(str(page.page))],recommendation:image?'Review the listed images for appropriate dimensions, compression and format.':chain?'Review the request chain and load important assets earlier where safe.':'Review critical styles and scripts; defer nonessential work after checking dependencies.',owner:'Performance engineer',effort:'Investigation first',verification:'Repeat the same device samples after a change and compare the medians and variation.',count:resources.size||1,kind:'review'});
+      const longestChain=audits.map(a=>num(a.longestChainMs)).find(value=>value!==undefined&&value>0);
+      const impact=image?`Some images could be delivered more efficiently${totalBytes!==undefined?`; the sampled audit estimates ${Math.round(totalBytes/1024)} KB in potential savings`:''}.`:chain?`The browser waits for a chain of requests before it can finish loading important content.${longestChain!==undefined?` The sampled chain finishes after ${(longestChain/1000).toFixed(2)} s.`:''}`:'Some page resources must load before the browser can draw the content.';
+      const detail={device:label,page:str(page.page),impact,resources:names.length?names:[pageLabel(str(page.page))]};
+      let combined=resourceFindings.get(id);
+      if(!combined) {
+        combined={finding:{title:image?'Reduce image weight':chain?'Shorten the loading chain':'Review resources that delay drawing',impact:'',where:[],recommendation:image?'Review the listed images for appropriate dimensions, compression and format.':chain?'Review the request chain and load important assets earlier where safe.':'Review critical styles and scripts; defer nonessential work after checking dependencies.',owner:'Performance engineer',effort:'Investigation first',verification:'Repeat the same device samples after a change and compare the medians and variation.',count:0,kind:'review',deviceDetails:[]},resourceUrls:new Set()};
+        resourceFindings.set(id,combined);
+      }
+      combined.finding.deviceDetails!.push(detail);
+      for(const url of resources.keys())combined.resourceUrls.add(url);
+      combined.finding.count=Math.max(1,combined.resourceUrls.size);
     }
   }
-  section.findings=resourceFindings;
-  section.limits=`${devices.length===1?`${devices[0]} only; `:''}lab samples are not real-user Core Web Vitals. LCP and CLS use reference bands; TBT is not a measure of real-user interaction responsiveness.`;
+  section.findings=[...resourceFindings.values()].map(({finding})=>{
+    const details=finding.deviceDetails!;
+    const impacts=unique(details.map(detail=>detail.impact));
+    finding.impact=impacts.length===1?`${impacts[0]} Observed on ${unique(details.map(detail=>detail.device.toLowerCase())).join(' and ')}.`:unique(details.map(detail=>`${detail.device}: ${detail.impact}`)).join(' ');
+    finding.where=unique(details.flatMap(detail=>detail.resources.map(resource=>`${detail.device}: ${resource}`)));
+    return finding;
+  });
+  section.limits=`${devices.length===1?`${devices[0]} only; `:''}lab samples are not real-user Core Web Vitals. LCP measures when main content appears, used here as a proxy for the separate under-2-second page-load goal. LCP and CLS use reference bands; TBT is not a measure of real-user interaction responsiveness.`;
   if(devices.length===1&&devices[0]==='Desktop')section.reviewGroups.push({title:'Measure the mobile experience',count:0,body:'A mobile run can show how loading behaves on a smaller screen and a slower connection.'});
+}
+
+
+function mobileTimingHeadline(report: AgentReport | undefined): string | undefined {
+  if(!report || report.collectionStatus==='failed' || !report.coverage.some(c=>c.status==='complete'))return;
+  const pages=list(obj(report.measurements?.navigation).pages).map(obj).filter(page=>
+    num(obj(obj(page.metrics)['performance-score']).median)!==undefined && num(obj(obj(page.metrics)['largest-contentful-paint']).median)!==undefined && num(page.succeeded)!==0);
+  const mobile=pages.find(page=>(page.formFactor==='mobile'||page.profileId==='mobile-v1')&&str(page.page)===report.testedUrl)
+    ??pages.find(page=>page.formFactor==='mobile'||page.profileId==='mobile-v1');
+  if(!mobile)return;
+  const desktop=pages.find(page=>page.formFactor!=='mobile'&&page.profileId!=='mobile-v1'&&page.page===mobile.page);
+  const seconds=(page:Record<string,JsonValue>)=>(num(obj(obj(page.metrics)['largest-contentful-paint']).median)!/1000).toFixed(1);
+  const location=str(mobile.page)!==report.testedUrl?` on ${pagePath(str(mobile.page))}`:'';
+  return `On phones, your main content${location} appears after ${seconds(mobile)} s (goal: under 2 s)${desktop?`; desktop ${seconds(desktop)} s`:''}.`;
 }
 
 export function buildCustomerReport(reports: AgentReport[], options: {scope?:'all'|'selected'} = {}): CustomerReport {
@@ -271,13 +328,14 @@ export function buildCustomerReport(reports: AgentReport[], options: {scope?:'al
       section.limits=`Some checks could not finish. ${section.limits}`;
       if(section.rating.tone==='good') { section.rating={...section.rating,label:'Incomplete assessment',tone:'limited'};section.headline='The completed checks provide useful evidence, but this assessment is incomplete.'; }
     }
-    section.images=report.artifacts.filter(a=>/^image\/(png|jpeg)$/.test(a.mediaType)&&/screenshot|page preview/i.test(a.label)).slice(0,2).map(a=>({runId:report.runId,artifactId:a.id,caption:`Page captured during the ${section.title.toLowerCase()} review${a.scope?.state==='mobile'?' (mobile)':a.scope?.state==='desktop'?' (desktop)':''}.`}));
+    section.images=report.artifacts.filter(a=>/^image\/(png|jpeg)$/.test(a.mediaType)&&/screenshot|page preview/i.test(a.label)).slice(0,2).map(a=>({runId:report.runId,artifactId:a.id,caption:`Page captured during the ${section.agentId==='seo-ai-search'?'SEO & discoverability':section.title.toLowerCase()} review${a.scope?.state==='mobile'?' (mobile)':a.scope?.state==='desktop'?' (desktop)':''}.`}));
     return section;
   });
   const attention=sections.filter(s=>s.rating.tone==='attention').length,limited=sections.filter(s=>s.rating.tone==='limited').length;
   const latest=reports.map(r=>new Date(r.completedAt)).filter(d=>Number.isFinite(d.valueOf())).sort((a,b)=>b.valueOf()-a.valueOf())[0];
+  const measuredHeadline=mobileTimingHeadline(reports.find(r=>r.agentId==='performance'));
   return {targetUrl:reports[0].submittedUrl,dateLabel:latest?latest.toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric',timeZone:'America/New_York'}):'Date unavailable',
-    headline:attention?`${attention} ${attention===1?'area needs':'areas need'} attention. Here is where Solvd can help.`:limited?'More evidence is needed before drawing a conclusion.':'The sampled checks show useful foundations. Build on them with a focused review.',sections,
+    headline:measuredHeadline??(attention?`${attention} ${attention===1?'area needs':'areas need'} attention. Here is where Solvd can help.`:limited?'More evidence is needed before drawing a conclusion.':'The sampled checks show useful foundations. Build on them with a focused review.'),sections,
     nextStep:{title:'Discuss these findings with Solvd',body:'We found these results from public pages. A focused review can validate the priorities, agree the right changes and define the work with your team.',items:['Confirm the highest-impact issues and the pages that matter most to your customers.','With agreed access, review key user journeys, search data and real-user performance.','Agree owners and effort, then measure the results of any separately scoped changes.']},
     key:'Finding: a problem detected by a completed check. Needs review: a question to validate. Observation: context or a best-practice suggestion.'};
 }

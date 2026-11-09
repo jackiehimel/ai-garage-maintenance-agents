@@ -15,7 +15,7 @@ test('customer accessibility report separates measured requirements from suggest
   const reviews = report.evidence.filter(e => e.kind === 'axe-incomplete');
   reviews.forEach((e, i) => { if (i < 55) e.data = { ...(e.data as object), checks: { any: [{ message: i < 54 ? "Background could not be determined due to a pseudo element" : "Background partially overlaps other elements" }], all: [], none: [] }, observedChecks: [] }; });
   const section = buildCustomerReport([report]).sections[0];
-  assert.equal(section.rating.label, 'Needs attention');
+  assert.equal(section.rating.label, '7 findings need attention');
   assert.match(section.headline, /7.*requirements.*3.*suggestions/);
   assert.deepEqual(section.reviewGroups.map(g => g.count).sort((a,b) => a-b), [1,7,54]);
   assert.equal(section.findings.filter(f => f.kind === 'finding').reduce((sum,f) => sum+f.count,0), 7);
@@ -101,4 +101,44 @@ test('failed performance samples do not supply customer scores, resource recomme
   let reads=0;
   const view=await buildCustomerReportWithArtifacts([report],{loadArtifact:async()=>{reads++;return Buffer.from('{}');}});
   assert.deepEqual(view.sections[0].sampleScores[0].values,[78]);assert.doesNotMatch(JSON.stringify(view),/failed-only-image/);assert.equal(reads,0);
+});
+
+test('the headline leads with measured phone content timing and compares only the same desktop page', () => {
+  const report=customerFixture('performance');
+  report.measurements={navigation:{pages:[{page:report.testedUrl,profileId:'mobile-v1',formFactor:'mobile',succeeded:3,planned:3,metrics:{'performance-score':{median:43},'largest-contentful-paint':{median:6593.413}}},{page:report.testedUrl,profileId:'desktop-v1',formFactor:'desktop',succeeded:3,planned:3,metrics:{'performance-score':{median:72},'largest-contentful-paint':{median:3224.17025}}}]}};
+  assert.equal(buildCustomerReport([report]).headline,'On phones, your main content appears after 6.6 s (goal: under 2 s); desktop 3.2 s.');
+  assert.match(buildCustomerReport([report]).sections[0].limits,/LCP.*proxy.*page.load goal/i);
+  (report.measurements.navigation as any).pages[1].page='https://example.com/another-page/';
+  assert.doesNotMatch(buildCustomerReport([report]).headline,/desktop 3.2/);
+});
+
+test('duplicate performance opportunities merge by audit while preserving device resource costs', () => {
+  const report=customerFixture('performance');
+  report.measurements={navigation:{pages:['mobile','desktop'].map((device,index)=>({page:report.testedUrl,formFactor:device,profileId:`${device}-v1`,planned:3,succeeded:1,metrics:{'performance-score':{median:70},'largest-contentful-paint':{median:3200}},samples:[{status:'collected',metrics:{'performance-score':70},diagnostics:[{id:'image-delivery-insight',score:0.5,value:index?20480:10240,unit:'byte',resources:[{url:`https://example.com/${device}-image.webp`,estimatedSavingsBytes:index?20480:10240}]}]}]}))}};
+  const section=buildCustomerReport([report]).sections[0];
+  assert.equal(section.findings.length,1);assert.equal(section.findings[0].title,'Reduce image weight');
+  assert.deepEqual(section.findings[0].deviceDetails?.map(d=>d.device),['Mobile','Desktop']);
+  assert.match(section.findings[0].where.join(' '),/Mobile:.*10 KB saving.*Desktop:.*20 KB saving/);
+  assert.match(section.findings[0].impact,/Mobile:.*10 KB.*Desktop:.*20 KB/);
+});
+
+test('SEO verdict names review items and describes only verified same-page HTTP canonical mismatches precisely', () => {
+  const report=customerFixture('seo-ai-search');const page='https://example.com/campaign/';
+  report.evidence=[{id:'meta',kind:'seo.source-metadata',agentId:report.agentId,scope:{page},summary:'Recorded metadata',source:{kind:'measured',name:'HTTP'},data:{title:'Campaign',description:'',documentUrl:page,canonical:[{url:'http://example.com/campaign/'}]}}];
+  report.findings=[{id:'desc',agentId:report.agentId,rule:'seo.description-missing',title:'Raw',summary:'Raw',severity:'low',disposition:'review-needed',scope:{page},evidenceIds:['meta'],coverageIds:[]},{id:'canonical',agentId:report.agentId,rule:'seo.canonical-target',title:'Raw',summary:'Raw',severity:'medium',disposition:'review-needed',scope:{page},evidenceIds:['meta'],coverageIds:[]}];
+  let section=buildCustomerReport([report]).sections[0];
+  assert.equal(section.rating.label,'2 items need review');
+  assert.match(section.findings[0].title,/\/campaign\//);assert.match(section.findings[0].where.join(' '),/\/campaign\//);
+  assert.match(section.findings[1].impact,/HTTP.*same page.*HTTPS/i);assert.match(section.findings[1].recommendation,/HTTP.*HTTPS/i);
+  (report.evidence[0].data as any).canonical=[{url:'http://example.com/different/'}];
+  section=buildCustomerReport([report]).sections[0];assert.doesNotMatch(section.findings[1].impact,/same page/);assert.doesNotMatch(section.findings[1].recommendation,/Replace.*HTTP.*HTTPS/);
+});
+
+test('accessibility verdict and grouped observations reconcile their instance counts, and SEO preview capitalization is preserved', () => {
+  const report=accessibilityReport();const section=buildCustomerReport([report]).sections[0];
+  assert.equal(section.rating.label,'7 findings need attention');
+  const observations=section.findings.filter(f=>f.kind==='observation');assert.deepEqual(observations.map(f=>f.count),[1,2]);
+  assert.match(observations[0].title,/1 /);assert.match(observations[1].title,/2 /);
+  const seo=customerFixture('seo-ai-search');seo.evidence=[{id:'meta',kind:'seo.source-metadata',agentId:seo.agentId,scope:{page:seo.testedUrl},summary:'metadata',source:{kind:'measured',name:'HTTP'},data:{title:'Example',description:'Example description'}}];seo.artifacts=[{id:'preview',label:'Page preview',mediaType:'image/jpeg',byteLength:100}];
+  assert.match(buildCustomerReport([seo]).sections[0].images[0].caption,/SEO/);
 });
