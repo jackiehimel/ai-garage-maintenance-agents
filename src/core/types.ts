@@ -129,7 +129,8 @@ export interface AssessmentCounts {
   byPageState: AssessmentCountGroups<{page:string;state?:string;count:number}>;
 }
 export interface AssessmentParameters {
-  colors: string[]; contrastRatios: number[]; quantities: { value: number; unit: string }[];
+  // Older saved reports contain quantities without metric names.
+  colors: string[]; contrastRatios: number[]; quantities: { metric?: string; value: number; unit: string }[];
 }
 interface AssessmentFactBase { id: string; evidenceIds: string[]; provenance: Provenance[]; measuredParameters?: AssessmentParameters }
 export type AssessmentFact = AssessmentFactBase & (

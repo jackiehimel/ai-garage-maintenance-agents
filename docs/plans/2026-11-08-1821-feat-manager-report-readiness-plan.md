@@ -69,7 +69,7 @@ The full nine-agent case/workflow platform, durable case orchestration, cross-ag
 
 ### Verified Starting Evidence
 
-Implementation starting point: main `2f85f21`, SEO repair `ede589e` (published equivalent `6f194780`), and factual-grounding repair `127c943`. SEO GitHub CI passed 94/94 tests, typecheck and build. Grounding locally passed 33 focused tests, typecheck/build and 114/115 full-suite tests; the remaining loopback-listener test is blocked by the sandbox. Independent review and fresh provider/live acceptance for the grounding change remain separate gates. These fixes preserve generated AI analysis; neither implements the proposed investigation round.
+Implementation starting point: main `2f85f21` and the SEO/factual-grounding fixes in [PR #7](https://github.com/jackiehimel/ai-garage-maintenance-agents/pull/7). That PR records the exact current source revision, review corrections and CI evidence. Fresh provider/live acceptance and updating the running prototype remain separate gates. These fixes preserve generated AI analysis; neither implements the proposed investigation round.
 
 These are inspected historical live reports with AI enabled, not proof that the current fixes have passed live acceptance. Their runtime files belong to the canonical checkout and are not committed fixtures.
 

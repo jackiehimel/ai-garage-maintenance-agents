@@ -1,4 +1,5 @@
 import type { AssessmentAction, AssessmentClassification, AssessmentCounts, AssessmentFact, AssessmentHypothesis, AssessmentParameters, CollectorResult, Evidence, Priority, ValidatedRequest } from './types.js';
+import { LAB_METRICS } from '../agents/performance-measurements.js';
 
 export const assessmentPriorities: Priority[] = ['critical','high','medium','low','info'];
 const unique = <T>(values: T[]) => [...new Set(values)];
@@ -16,25 +17,43 @@ function classification(evidence: Evidence[]): AssessmentClassification {
 
 /** Deliberately narrow extraction: a number in a URL, tag or count is not a measurement. */
 function measuredParameters(evidence: Evidence[]): AssessmentParameters {
-  const colors: string[] = [], contrastRatios: number[] = [], quantities: {value:number;unit:string}[] = [];
+  const colors: string[] = [], contrastRatios: number[] = [];
+  const quantities = new Map<string, AssessmentParameters['quantities'][number]>();
+  const addQuantity = (metric: string, unit: string, value: unknown) => {
+    if (typeof value !== 'number' || !Number.isFinite(value)) return;
+    const quantity = {metric,unit:unit.toLowerCase(),value};
+    quantities.set(JSON.stringify(quantity),quantity);
+  };
+  const recordOf = (value: unknown) => value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string,unknown> : undefined;
   for (const e of evidence) {
     if (e.source.kind !== 'measured' && e.source.kind !== 'supplied') continue;
     if (e.kind.startsWith('axe-') && e.data && typeof e.data === 'object' && !Array.isArray(e.data) && e.data.rule === 'color-contrast') {
       for (const match of e.summary.matchAll(/(?:foreground|background) color:\s*(#[\da-f]{3,8})\b/gi)) colors.push(match[1].toLowerCase());
       for (const match of e.summary.matchAll(/contrast (?:ratio of|of)\s*(\d+(?:\.\d+)?)/gi)) contrastRatios.push(Number(match[1]));
     }
+    if (e.agentId === 'performance' && e.source.kind === 'measured') {
+      const data = recordOf(e.data), metrics = recordOf(data?.metrics);
+      if (metrics) for (const [metric,{unit}] of Object.entries(LAB_METRICS)) {
+        if (e.kind === 'navigation-distribution') {
+          const distribution = recordOf(metrics[metric]);
+          if (distribution?.unit === unit) for (const statistic of ['median','min','max','spread']) addQuantity(metric,unit,distribution[statistic]);
+        } else if (e.kind === 'navigation-sample' && data?.status === 'collected') {
+          addQuantity(metric,unit,metrics[metric]);
+        }
+      }
+    }
     const visit = (value: unknown, depth = 0) => {
       if (!value || typeof value !== 'object' || depth > 8) return;
       if (Array.isArray(value)) { for (const child of value) visit(child, depth + 1); return; }
       const record = value as Record<string, unknown>;
       if (typeof record.metric === 'string' && typeof record.unit === 'string') {
-        for (const key of ['value','median','threshold']) if (typeof record[key] === 'number' && Number.isFinite(record[key])) quantities.push({value:record[key] as number,unit:record.unit.toLowerCase()});
+        for (const key of ['value','median','threshold']) addQuantity(record.metric,record.unit,record[key]);
       }
       for (const child of Object.values(record)) visit(child, depth + 1);
     };
     visit(e.data);
   }
-  return { colors: unique(colors), contrastRatios: unique(contrastRatios), quantities };
+  return { colors: unique(colors), contrastRatios: unique(contrastRatios), quantities:[...quantities.values()] };
 }
 
 function counts(result: CollectorResult): AssessmentCounts {
@@ -135,16 +154,38 @@ function supportsMissingName(facts:AssessmentFact[],grounding:AssessmentGroundin
   return grounding.evidence.some(e=>ids.has(e.id) && e.data && typeof e.data==='object' && !Array.isArray(e.data) && e.data.rule==='button-name');
 }
 
+// Capture internal signs and separators so parsing can reject compound tokens as a whole.
+const numericToken = /(?<![\d.,+\-−])((?:(?<!\w)|(?=[+\-−]))[\d.,+\-−]*\d)/.source;
+const ratioLiterals = new RegExp(`${numericToken}\\s*:\\s*1\\b`,'g');
+const quantityLiterals = new RegExp(`${numericToken}\\s*(ms|s|%|kb|mb|points|unitless)\\b`,'gi');
+const thresholdLiterals = new RegExp(`\\b(?:at least|threshold(?: of| to)?|target(?: of| to)?)\\s+${numericToken}`,'gi');
+
+function parseNumericLiteral(literal:string):number {
+  if(!/^[+\-−]?(?:\d+|\d{1,3}(?:,\d{3})+)(?:\.\d+)?$/.test(literal)) return NaN;
+  return Number(literal.replaceAll(',','').replace('−','-'));
+}
+
+function matchesQuantity(quantity:AssessmentParameters['quantities'][number],literal:string,unit:string):boolean {
+  const value=parseNumericLiteral(literal);
+  if(quantity.unit===unit && quantity.value===value) return true;
+  if((unit!=='ms' && unit!=='s') || (quantity.unit!=='ms' && quantity.unit!=='s')) return false;
+  const converted=quantity.unit===unit?quantity.value:unit==='ms'?quantity.value*1000:quantity.value/1000;
+  if(converted===value) return true;
+  // Accept display rounding at the written precision, with at most a 10 ms step.
+  const decimals=literal.split('.')[1]?.length??0;
+  return decimals<=(unit==='ms'?3:6) && (unit==='ms'||decimals>=2) && Number(converted.toFixed(decimals))===value;
+}
+
 /** Targeted regression guards, NOT a general natural-language entailment checker. */
 function checkGeneratedText(generated:string,supporting:AssessmentFact[],grounding:AssessmentGrounding,kind:'assertion'|'proposal'|'hypothesis') {
   const parameters = supporting.flatMap(f=>f.measuredParameters ? [f.measuredParameters] : []);
   const colors=generated.match(/#[\da-f]{8}\b|#[\da-f]{6}\b|#[\da-f]{4}\b|#[\da-f]{3}\b/gi)??[];
   if(colors.some(color=>!parameters.some(p=>p.colors.includes(color.toLowerCase())))) throw new Error('Assessment contains an unmeasured color');
-  const ratios=[...generated.matchAll(/\b(\d+(?:\.\d+)?)\s*:\s*1\b/g)].map(m=>Number(m[1]));
-  const quantities=[...generated.matchAll(/\b(\d+(?:\.\d+)?)\s*(ms|s|%|kb|mb)\b/gi)];
-  const thresholds=[...generated.matchAll(/(?:at least|threshold(?: of| to)?|target(?: of)?)\s+(\d+(?:\.\d+)?)/gi)].map(m=>Number(m[1]));
+  const ratios=[...generated.matchAll(ratioLiterals)].map(m=>parseNumericLiteral(m[1]));
+  const quantities=[...generated.matchAll(quantityLiterals)];
+  const thresholds=[...generated.matchAll(thresholdLiterals)].map(m=>parseNumericLiteral(m[1]));
   if(ratios.some(value=>!parameters.some(p=>p.contrastRatios.includes(value))) ||
-     quantities.some(m=>!parameters.some(p=>p.quantities.some(q=>q.value===Number(m[1])&&q.unit===m[2].toLowerCase()))) ||
+     quantities.some(m=>!parameters.some(p=>p.quantities.some(q=>matchesQuantity(q,m[1],m[2].toLowerCase())))) ||
      thresholds.some(value=>!parameters.some(p=>p.contrastRatios.includes(value)||p.quantities.some(q=>q.value===value)))) {
     throw new Error('Assessment contains an unmeasured numerical parameter');
   }

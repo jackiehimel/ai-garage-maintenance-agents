@@ -3,12 +3,112 @@ import test from 'node:test';
 import { buildAssessmentGrounding, measuredAssessmentSummary, validateGroundedAssessment } from '../src/core/assessment-grounding.js';
 import { validateRequest } from '../src/core/input.js';
 import type { CollectorResult } from '../src/core/types.js';
+import { summarizeNavigationPage } from '../src/agents/performance-measurements.js';
 const request=validateRequest({agentId:'accessibility',targetUrl:'https://example.com/'});
 const scope={page:request.targetUrl,state:'initial',element:'#test'};
 function fixture():CollectorResult {return {testedUrl:request.targetUrl,runtime:{node:'24',browser:'Chromium',engine:'test'},artifacts:[],coverage:[{id:'c',scope,subject:'axe',status:'complete'}],
   evidence:[{id:'e',agentId:'accessibility',kind:'axe-violation',scope,source:{kind:'measured',name:'axe',reference:'https://example.com/version/7.1'},summary:'Contrast of 3.32 (foreground color: #665e5c, background color: #000000). Expected contrast ratio of 4.5:1',data:{rule:'color-contrast',tags:['wcag2aa','wcag143'],criteria:['1.4.3'],unrelatedCount:7.1}}],
   findings:[{id:'f',agentId:'accessibility',rule:'color-contrast',scope,title:'Contrast',summary:'Measured contrast',severity:'high',disposition:'finding',evidenceIds:['e'],coverageIds:['c']}]};}
 function valid(){return {interpretation:'Inspect the recorded contrast.',claimIds:['finding:f'],actions:[{title:'Measure displayed contrast',mode:'propose-correction',targetFactIds:['finding:f'],priority:'high',rationale:'Recheck the recorded 4.5:1 threshold.',steps:['Measure the rendered foreground and background.'],verification:'Repeat axe on this element and record the measured contrast ratio.'}]};}
+
+const performanceRequest=validateRequest({agentId:'performance',targetUrl:'https://example.com/'});
+function navigationFixture(kind:'navigation-distribution'|'navigation-sample'='navigation-distribution') {
+  // Use the production summarizer and the same evidence data projection as pageCoverage.
+  const page=summarizeNavigationPage(performanceRequest.targetUrl,3,[3001,3013.942,3027].map((lcp,index)=>({
+    index:index+1,status:'collected',testedUrl:performanceRequest.targetUrl,requests:25,blocked:0,
+    metrics:{'largest-contentful-paint':lcp,'performance-score':86,'cumulative-layout-shift':0.08},
+  })));
+  const {planned,attempted,succeeded,failed,notRun,metrics}=page;
+  const r=fixture();r.findings=[];
+  r.evidence=[{id:'navigation',agentId:'performance',kind,scope:{page:page.page},source:{kind:'measured',name:'Lighthouse',reference:'https://example.com/version/2.5'},
+    summary:'Recorded navigation measurements.',data:kind==='navigation-distribution'?{planned,attempted,succeeded,failed,notRun,metrics}:page.samples[1]}];
+  return {result:r,page};
+}
+function navigationResponse(interpretation:string) {return {interpretation,claimIds:['observation:navigation'],actions:[]};}
+
+test('production navigation distributions retain metric identity and measured statistics, excluding counts',()=>{
+  const {result}=navigationFixture(),g=buildAssessmentGrounding(performanceRequest,result);
+  const quantities=g.facts.find(f=>f.id==='observation:navigation')!.measuredParameters!.quantities;
+  for(const value of [3013.942,3001,3027,26]) assert.ok(quantities.some(q=>q.value===value&&q.unit==='ms'&&q.metric==='largest-contentful-paint'));
+  assert.ok(!quantities.some(q=>q.value===3||q.value===25||q.value===2.5));
+  assert.doesNotThrow(()=>validateGroundedAssessment(navigationResponse('Recorded median LCP was 3013.942 ms.'),g,performanceRequest));
+});
+
+test('production navigation sample values have their metric units and failed samples cannot authorize values',()=>{
+  const {result}=navigationFixture('navigation-sample');
+  let g=buildAssessmentGrounding(performanceRequest,result);
+  assert.doesNotThrow(()=>validateGroundedAssessment(navigationResponse('Recorded sample LCP was 3013.942 ms.'),g,performanceRequest));
+  assert.ok(g.facts.find(f=>f.id==='observation:navigation')!.measuredParameters!.quantities.some(q=>q.value===86&&q.unit==='points'));
+  result.evidence[0].data={...result.evidence[0].data as object,status:'failed'};
+  g=buildAssessmentGrounding(performanceRequest,result);
+  assert.throws(()=>validateGroundedAssessment(navigationResponse('Recorded sample LCP was 3013.942 ms.'),g,performanceRequest),/unmeasured numerical parameter/);
+});
+
+test('time formatting allows bounded ms to seconds conversion and standard rounding without invented targets',()=>{
+  const {result}=navigationFixture(),g=buildAssessmentGrounding(performanceRequest,result);
+  for(const value of ['3.013942 s','3.01 s','3013.94 ms','3014 ms']) {
+    assert.doesNotThrow(()=>validateGroundedAssessment(navigationResponse(`Recorded median LCP was ${value}.`),g,performanceRequest),value);
+  }
+  for(const value of ['2.5 s','3.02 s','3 s','3.010 s','3013.942 kb','25 ms']) {
+    assert.throws(()=>validateGroundedAssessment(navigationResponse(`Set the LCP target to ${value}.`),g,performanceRequest),/unmeasured numerical parameter/,value);
+  }
+  for(const value of ['2.5','3','25']) assert.throws(()=>validateGroundedAssessment(navigationResponse(`Use a threshold of ${value}.`),g,performanceRequest),/unmeasured numerical parameter/,value);
+});
+
+test('generic typed quantities still validate exact units and support seconds to milliseconds formatting',()=>{
+  const {result}=navigationFixture();result.evidence[0].kind='supplied-field-measurement';
+  result.evidence[0].data={metric:'LCP',unit:'s',value:3.013942};
+  const g=buildAssessmentGrounding(performanceRequest,result);
+  assert.doesNotThrow(()=>validateGroundedAssessment(navigationResponse('Recorded LCP was 3013.942 ms.'),g,performanceRequest));
+  assert.doesNotThrow(()=>validateGroundedAssessment(navigationResponse('Recorded LCP was 3.013942 s.'),g,performanceRequest));
+  assert.throws(()=>validateGroundedAssessment(navigationResponse('Use a threshold of 2.5 s.'),g,performanceRequest),/unmeasured numerical parameter/);
+});
+
+test('navigation quantity checks keep ASCII and Unicode signs',()=>{
+  const {result}=navigationFixture(),g=buildAssessmentGrounding(performanceRequest,result);
+  const check=(value:string)=>validateGroundedAssessment(navigationResponse(`Recorded median LCP was ${value} ms.`),g,performanceRequest);
+  for(const value of ['3013.942','+3013.942']) assert.doesNotThrow(()=>check(value),value);
+  for(const value of ['-3013.942','−3013.942','-3,013.942','−3,013.942']) assert.throws(()=>check(value),/unmeasured numerical parameter/,value);
+});
+
+test('navigation quantity checks accept valid comma grouping and reject malformed grouping',()=>{
+  const {result}=navigationFixture(),g=buildAssessmentGrounding(performanceRequest,result);
+  const check=(value:string)=>validateGroundedAssessment(navigationResponse(`Recorded median LCP was ${value} ms.`),g,performanceRequest);
+  for(const value of ['3,013.942','+3,013.942']) assert.doesNotThrow(()=>check(value),value);
+  for(const value of ['1,3013.942','3,,013.942','3,01.942']) assert.throws(()=>check(value),/unmeasured numerical parameter/,value);
+});
+
+test('compact ranges and adjacent signs cannot bypass numeric grounding',()=>{
+  const {result}=navigationFixture(),g=buildAssessmentGrounding(performanceRequest,result);
+  for(const literal of ['2000-9999','2000-3013.942','2000−3013.942','2000+3013.942','2000+-3013.942']) {
+    assert.throws(()=>validateGroundedAssessment(navigationResponse(`Recorded LCP was ${literal} ms.`),g,performanceRequest),/unmeasured numerical parameter/,literal);
+  }
+  assert.throws(()=>validateGroundedAssessment(navigationResponse('Use a threshold of 3013.942-9999.'),g,performanceRequest),/unmeasured numerical parameter/);
+  const contrast=buildAssessmentGrounding(request,fixture());
+  assert.throws(()=>validateGroundedAssessment({...valid(),interpretation:'Recorded contrast was 2-3.32:1.'},contrast,request),/unmeasured numerical parameter/);
+});
+
+test('navigation score points and unitless measurements must match a cited quantity',()=>{
+  const {result}=navigationFixture(),g=buildAssessmentGrounding(performanceRequest,result);
+  for(const literal of ['86 points','0.08 unitless']) assert.doesNotThrow(()=>validateGroundedAssessment(navigationResponse(`Recorded value was ${literal}.`),g,performanceRequest),literal);
+  for(const literal of ['99 points','0.4 unitless','-86 points','−0.08 unitless']) assert.throws(()=>validateGroundedAssessment(navigationResponse(`Recorded value was ${literal}.`),g,performanceRequest),/unmeasured numerical parameter/,literal);
+});
+
+test('contrast ratio checks keep the sign and reject malformed grouping',()=>{
+  const g=buildAssessmentGrounding(request,fixture());
+  const check=(value:string)=>validateGroundedAssessment({...valid(),interpretation:`The recorded contrast was ${value}:1.`},g,request);
+  for(const value of ['3.32','+3.32']) assert.doesNotThrow(()=>check(value),value);
+  for(const value of ['-3.32','−3.32','1,3.32']) assert.throws(()=>check(value),/unmeasured numerical parameter/,value);
+});
+
+test('explicit thresholds and targets check the entire signed and grouped number',()=>{
+  const {result}=navigationFixture(),g=buildAssessmentGrounding(performanceRequest,result);
+  for(const context of ['threshold of','target of','target to','at least']) {
+    const check=(value:string)=>validateGroundedAssessment(navigationResponse(`Compare with ${context} ${value}.`),g,performanceRequest);
+    for(const value of ['3013.942','+3,013.942']) assert.doesNotThrow(()=>check(value),`${context} ${value}`);
+    for(const value of ['-3013.942','−3,013.942','26,3013.942']) assert.throws(()=>check(value),/unmeasured numerical parameter/,`${context} ${value}`);
+  }
+});
 
 test('typed numerical parameters cannot be authorized by an unrelated count, URL or numeric token',()=>{
   const g=buildAssessmentGrounding(request,fixture());
