@@ -189,3 +189,24 @@ input[type="file"]::file-selector-button { padding: 7px 9px; margin-right: 8px; 
   .finding-group .details-grid { grid-template-columns: minmax(0, 1fr); gap: 4px; font-size: .94rem; }
   .finding-group .details-grid dd { margin-bottom: 10px; }
 }
+
+/* Combined runs keep the same independent collectors and detailed reports. */
+.all-agents { grid-column: 1 / -1; }
+.all-agents .agent-card { display: grid; grid-template-columns: 34px minmax(0, 1fr) 18px; gap: 4px 12px; }
+.all-agents .card-top { display: contents; }
+.all-agents .agent-icon { grid-row: 1 / span 2; grid-column: 1; font-weight: 750; }
+.all-agents .radio-indicator { grid-row: 1; grid-column: 3; }
+.all-agents .agent-name { grid-row: 1; grid-column: 2; }
+.all-agents .agent-description { grid-row: 2; grid-column: 2 / 4; }
+.combined-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; align-items: start; }
+.combined-card { padding: 22px; overflow-wrap: anywhere; }
+.combined-card h3 { min-height: 2.4em; }
+.combined-card > .badge { margin-top: 14px; }
+.combined-card > .button { margin-top: 18px; }
+.combined-facts { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px 12px; padding: 18px 0; margin: 12px 0; border-block: 1px solid var(--rule); font-size: .84rem; }
+.combined-facts dt { color: var(--ink-soft); }
+.combined-facts dd { margin: 0; font-weight: 750; text-align: right; }
+.combined-next { margin-top: 20px; }
+.combined-card .report-list { font-size: .88rem; }
+.combined-card .report-list li + li { margin-top: 12px; }
+@media (max-width: 900px) { .combined-grid { grid-template-columns: 1fr; } .combined-card h3 { min-height: 0; } }

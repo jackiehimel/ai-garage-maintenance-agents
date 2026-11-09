@@ -21,16 +21,24 @@
     <div class="hero">
       <p class="hero-kicker"><span></span> SOLVD MAINTENANCE TOOLS</p>
       <h1>Website maintenance agents</h1>
-      <p>Run a focused check on a public page, review the evidence, and compare it with a previous run.</p>
+      <p>Enter a public URL. Run all three agents for a combined PDF report, or choose one for a focused check.</p>
     </div>
 
     <form id="run-form" class="workspace">
       <fieldset id="run-controls">
         <legend class="visually-hidden">Run settings</legend>
         <fieldset class="agent-picker" aria-describedby="agent-description">
-          <legend><span class="step-number" aria-hidden="true">01</span> Choose an agent</legend>
-          <p id="agent-description" class="section-intro">Each agent runs independently and produces its own report.</p>
+          <legend><span class="step-number" aria-hidden="true">01</span> Choose your checks</legend>
+          <p id="agent-description" class="section-intro">Run all three from one URL or use each agent independently.</p>
           <div class="agent-grid">
+            <label class="agent-option all-agents">
+              <input type="radio" name="agent" value="all" aria-labelledby="all-name" aria-describedby="all-description">
+              <span class="agent-card">
+                <span class="card-top"><span class="agent-icon" aria-hidden="true">3</span><span class="radio-indicator" aria-hidden="true"></span></span>
+                <span class="agent-name" id="all-name">Run all three agents</span>
+                <span class="agent-description" id="all-description">SEO, accessibility and performance in one report. Download a clean PDF when the checks finish.</span>
+              </span>
+            </label>
             <label class="agent-option">
               <input type="radio" name="agent" value="seo-ai-search" checked aria-labelledby="seo-name" aria-describedby="seo-description">
               <span class="agent-card">
@@ -86,12 +94,12 @@
             <div class="advanced-body">
               <div>
                 <label class="field-label" for="configuration">Additional configuration (JSON)</label>
-                <p id="configuration-help" class="field-help">Add same-origin pages, indexing intent, accessibility states, or a performance sample count. Leave blank for a check of the entered page with default settings.</p>
+                <p id="configuration-help" class="field-help">Add same-origin pages, indexing intent, accessibility states, or a performance sample count. Leave blank for a check of the entered page with default settings. All-three mode accepts up to three pages including the entered URL and applies a custom sample count only to performance.</p>
                 <textarea id="configuration" rows="5" spellcheck="false" maxlength="3000000" placeholder='{ "pages": ["/about"] }' aria-describedby="configuration-help"></textarea>
               </div>
               <div>
                 <label class="field-label" for="baseline-file">Previous run baseline (JSON)</label>
-                <p id="baseline-help" class="field-help">Import a baseline or a report containing one. Runs are compared only when the baseline is compatible.</p>
+                <p id="baseline-help" class="field-help">Import a baseline or a report containing one. Runs are compared only when the baseline is compatible. With all three selected, the baseline applies to its matching agent; the other two run without a baseline.</p>
                 <input id="baseline-file" type="file" accept=".json,application/json" aria-describedby="baseline-help">
                 <div class="baseline-selection">
                   <p id="baseline-selection" class="field-help" role="status"></p>

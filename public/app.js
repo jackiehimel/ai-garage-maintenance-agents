@@ -699,6 +699,162 @@ function renderReport(report) {
   if (document.activeElement === document.body || document.activeElement === runButton) title.focus();
 }
 
+function combinedAddress(reports) {
+  const address = new URL(window.location.href);
+  address.searchParams.delete('run');
+  address.searchParams.set('scope', 'all');
+  if (reports.length) address.searchParams.set('runs', reports.map(report => report.runId).join(','));
+  else address.searchParams.delete('runs');
+  window.history.replaceState(null, '', address);
+}
+
+function renderCombined(targetUrl, entries, finished, baselineNote = '') {
+  const reports = entries.flatMap(item => item.report ? [item.report] : []);
+  const root = document.createDocumentFragment();
+  const overview = element('div', 'report-panel report-overview');
+  const title = element('h2', '', 'Website maintenance report');
+  title.id = 'report-title';
+  title.tabIndex = -1;
+  overview.append(element('p', 'eyebrow', 'SEO · Accessibility · Performance'), title);
+  paragraph(overview, targetUrl, 'report-target');
+  paragraph(overview, `${reports.length} of 3 reports returned${finished ? '.' : ' · Checks in progress.'}`);
+  paragraph(overview, finished
+    ? 'Review the measured results and next steps below. A missing or limited report is not a clean bill of health.'
+    : 'The agents run one after another so performance measurements are not affected by the other checks.', 'meta');
+  paragraph(overview, baselineNote, 'meta');
+  if (finished && reports.length) {
+    const actions = element('div', 'actions');
+    const message = element('p', 'meta');
+    message.setAttribute('role', 'status');
+    endpointDownload(actions, 'Download combined PDF', `/api/report.pdf?runs=${reports.map(report => report.runId).join(',')}&scope=all`, 'solvd-website-maintenance.pdf', message);
+    overview.append(actions, message);
+  }
+  root.append(overview);
+  const cards = element('div', 'combined-grid');
+  for (const item of entries) {
+    const card = element('article', 'report-panel combined-card');
+    card.append(element('h3', '', agents[item.agentId].title));
+    const report = item.report;
+    if (!report) {
+      const state = item.error ? 'No report available' : item.status;
+      card.append(badge(state, item.error ? 'error' : ''));
+      paragraph(card, item.error || (item.status === 'Running' ? 'Collecting and assessing evidence…' : 'Waiting for the preceding agent to finish.'), 'meta');
+      cards.append(card);
+      continue;
+    }
+    card.append(badge(`Collection: ${statusText(report.collectionStatus)}`, report.collectionStatus === 'complete' ? '' : 'warn'));
+    const facts = element('dl', 'combined-facts');
+    const metrics = report.agentId === 'seo-ai-search' ? [['Measured flags', report.findings.filter(finding => finding.disposition === 'finding').length], ['Human checks needed', report.findings.filter(finding => finding.disposition === 'review-needed').length], ['Completed checks', report.coverage.filter(item => item.status === 'complete').length]] : headlineMetrics(report);
+    for (const [label, value] of metrics) facts.append(element('dt', '', label), element('dd', '', value));
+    card.append(facts);
+    const flagged = report.findings.filter(finding => finding.disposition === 'finding');
+    const reviews = report.findings.filter(finding => finding.disposition === 'review-needed');
+    paragraph(card, flagged.length
+      ? `${flagged.length} measured ${flagged.length === 1 ? 'flag needs' : 'flags need'} attention${reviews.length ? `; ${reviews.length} additional items need human review` : ''}.`
+      : reviews.length ? `${reviews.length} items need human review; these are not confirmed defects.`
+      : report.collectionStatus === 'complete' ? 'No issues were flagged by the completed checks.' : 'No issues were flagged in the evidence collected. Coverage is limited.');
+    const groups = new Map();
+    for (const finding of [...flagged, ...reviews]) {
+      const key = `${finding.disposition}:${finding.rule}`;
+      if (!groups.has(key)) groups.set(key, { finding, count: 0 });
+      groups.get(key).count++;
+    }
+    if (groups.size) {
+      card.append(element('h4', 'combined-next', 'Where to start'));
+      const list = element('ul', 'report-list');
+      for (const { finding, count } of [...groups.values()].slice(0, 3)) {
+        const row = element('li');
+        row.append(element('strong', '', `${finding.title}${count > 1 ? ` (${count} instances)` : ''}`));
+        paragraph(row, finding.disposition === 'review-needed'
+          ? finding.investigate || 'Review the recorded evidence before deciding whether a change is needed.'
+          : finding.correct || finding.investigate || finding.summary);
+        list.append(row);
+      }
+      card.append(list);
+      if (groups.size > 3) paragraph(card, `${groups.size - 3} more finding groups are in the detailed report.`, 'meta');
+    }
+    const missing = report.coverage.filter(item => item.status !== 'complete');
+    if (missing.length) paragraph(card, `${missing.length} coverage ${missing.length === 1 ? 'entry needs' : 'entries need'} attention. See the detailed report for unavailable, unconfigured or incomplete checks.`, 'meta');
+    paragraph(card, agents[item.agentId].limit, 'meta');
+    paragraph(card, `AI assessment: ${statusText(report.assessment.status)} · Comparison: ${statusText(report.comparison.status)}`, 'meta');
+    paragraph(card, `Checked ${new Date(report.completedAt).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })}`, 'meta');
+    const link = element('a', 'button secondary', 'View detailed report');
+    link.href = `/?run=${report.runId}`;
+    card.append(link);
+    cards.append(card);
+  }
+  root.append(cards);
+  reportPanel.replaceChildren(root);
+  reportPanel.hidden = false;
+  if (finished && (document.activeElement === document.body || document.activeElement === runButton)) title.focus();
+}
+
+function allRequests(configuration, targetUrl, baseline) {
+  if (configuration.pages !== undefined && !Array.isArray(configuration.pages)) throw new Error('Configured pages must be an array.');
+  const target = new URL(targetUrl);
+  const pageUrls = (configuration.pages || []).map(page => new URL(typeof page === 'string' ? page : page.url, target.origin).href);
+  if (new Set([target.href, ...pageUrls]).size > 3) {
+    throw new Error('Run all three accepts up to 3 pages including the entered URL. Reduce the configured pages or run SEO and accessibility individually. Your configuration has been kept.');
+  }
+  if (baseline && !Object.hasOwn(agents, baseline.identity?.agentId)) throw new Error('The selected baseline does not identify a supported agent.');
+  return Object.keys(agents).map(agentId => {
+    const request = { ...configuration, agentId, targetUrl };
+    if (configuration.profile && agentId !== 'performance') {
+      const { samples, ...profile } = configuration.profile;
+      request.profile = profile;
+    }
+    if (baseline?.identity.agentId === agentId) request.baseline = baseline;
+    return request;
+  });
+}
+
+async function requestReport(request, signal) {
+  const body = JSON.stringify(request);
+  if (new Blob([body]).size > maxRequestBytes) throw new Error('Configuration and baseline together exceed the 3 MB request limit.');
+  const response = await fetch('/api/run', {
+    method: 'POST', credentials: 'same-origin', cache: 'no-store',
+    headers: { 'Content-Type': 'application/json' }, signal, body,
+  }).catch(error => {
+    if (error?.name === 'AbortError') throw error;
+    throw new Error('Could not reach the local demo service. This run was not verified. Check that the demo is running and try again.');
+  });
+  const result = await response.json().catch(error => {
+    if (error?.name === 'AbortError') throw error;
+    if (error?.name === 'TypeError') throw new Error('The connection to the local demo service was interrupted before the report arrived. This run was not verified. Try again when the demo is available.');
+    return null;
+  });
+  if (!response.ok) {
+    const description = typeof result?.error === 'string' ? result.error : typeof result?.message === 'string' ? result.message : '';
+    throw new Error(description || `The server could not run the check (HTTP ${response.status}).`);
+  }
+  if (!isReport(result) || result.agentId !== request.agentId || new URL(result.submittedUrl).href !== new URL(request.targetUrl).href) throw new Error('The server did not return a valid report for the requested agent and URL.');
+  return result;
+}
+
+async function runAll(requests, current, baseline) {
+  const entries = requests.map(request => ({ agentId: request.agentId, status: 'Queued' }));
+  const baselineNote = baseline ? `The selected baseline applies to ${agents[baseline.identity.agentId].title}. The other agents run without a baseline.` : '';
+  combinedAddress([]);
+  for (const [index, request] of requests.entries()) {
+    if (activeRun !== current) return;
+    entries[index].status = 'Running';
+    runStatus.textContent = `Running ${index + 1} of 3: ${agents[request.agentId].title}.`;
+    renderCombined(request.targetUrl, entries, false, baselineNote);
+    try {
+      const report = await requestReport(request, current.controller.signal);
+      if (activeRun !== current) return;
+      entries[index].report = report;
+      combinedAddress(entries.flatMap(item => item.report ? [item.report] : []));
+    } catch (error) {
+      if (activeRun !== current || error?.name === 'AbortError') return;
+      entries[index].error = error instanceof Error ? error.message : 'This agent did not return a report.';
+    }
+  }
+  renderCombined(requests[0].targetUrl, entries, true, baselineNote);
+  const returned = entries.filter(item => item.report).length;
+  runStatus.textContent = `${returned} of 3 reports returned. ${returned === 3 ? 'The combined PDF is ready.' : returned ? 'The combined PDF includes the available results and identifies missing reports.' : 'No reports are available. Review the errors below and try again.'}`;
+}
+
 function updateBaselineSelection() {
   const file = baselineField.files?.[0];
   baselineSelection.textContent = baselineFromRun ? `Baseline selected: ${baselineFromRun.runId}` :
@@ -743,7 +899,7 @@ async function parseBaselineFile(file) {
 
 function setBusy(busy, label = 'Running…') {
   controls.disabled = busy;
-  runLabel.textContent = busy ? label : 'Run check';
+  runLabel.textContent = busy ? label : new FormData(form).get('agent') === 'all' ? 'Run all three' : 'Run check';
   runStatus.dataset.running = String(busy);
 }
 
@@ -766,7 +922,7 @@ form.addEventListener('submit', async (event) => {
     return;
   }
   const agentId = new FormData(form).get('agent');
-  if (!Object.hasOwn(agents, agentId)) {
+  if (agentId !== 'all' && !Object.hasOwn(agents, agentId)) {
     showError('Choose an agent to run.');
     return;
   }
@@ -779,39 +935,29 @@ form.addEventListener('submit', async (event) => {
   let stage = 'preparing';
   runStatus.textContent = `Preparing the run request… ${previousReportStatus}`.trimEnd();
   try {
-    const request = { ...parseConfiguration(input), agentId, targetUrl };
-    if (selectedBaseline) request.baseline = selectedBaseline;
-    else if (file) request.baseline = await parseBaselineFile(file);
+    const configuration = parseConfiguration(input);
+    const baseline = selectedBaseline || (file ? await parseBaselineFile(file) : undefined);
     if (activeRun !== current) return;
-    const body = JSON.stringify(request);
-    if (new Blob([body]).size > maxRequestBytes) throw new Error('Configuration and baseline together exceed the 3 MB request limit.');
+    if (agentId === 'all') {
+      const requests = allRequests(configuration, targetUrl, baseline);
+      for (const request of requests) {
+        if (new Blob([JSON.stringify(request)]).size > maxRequestBytes) throw new Error('Configuration and baseline together exceed the 3 MB request limit.');
+      }
+      stage = 'running';
+      await runAll(requests, current, baseline);
+      return;
+    }
+    const request = { ...configuration, agentId, targetUrl, ...(baseline ? { baseline } : {}) };
     stage = 'running';
     const worker = runtimeMode === 'github-actions' ? ' through GitHub Actions' : '';
     runStatus.textContent = `Requested ${agents[agentId].title}${worker}. Waiting for the report… ${previousReportStatus}`.trimEnd();
-    const response = await fetch('/api/run', {
-      method: 'POST', credentials: 'same-origin', cache: 'no-store',
-      headers: { 'Content-Type': 'application/json' },
-      signal: current.controller.signal, body,
-    }).catch((error) => {
-      if (error?.name === 'AbortError') throw error;
-      throw new Error('Could not reach the local demo service. This run was not verified. Check that the demo is running and try again.');
-    });
-    const result = await response.json().catch((error) => {
-      if (error?.name === 'AbortError') throw error;
-      if (error?.name === 'TypeError') {
-        throw new Error('The connection to the local demo service was interrupted before the report arrived. This run was not verified. Try again when the demo is available.');
-      }
-      return null;
-    });
+    const result = await requestReport(request, current.controller.signal);
     if (activeRun !== current) return;
-    if (!response.ok) {
-      const description = typeof result?.error === 'string' ? result.error : typeof result?.message === 'string' ? result.message : '';
-      throw new Error(description || `The server could not run the check (HTTP ${response.status}).`);
-    }
-    if (!isReport(result) || result.agentId !== agentId) throw new Error('The server did not return a valid report.');
     setBusy(false);
     renderReport(result);
     const address = new URL(window.location.href);
+    address.searchParams.delete('runs');
+    address.searchParams.delete('scope');
     address.searchParams.set('run', result.runId);
     window.history.replaceState(null, '', address);
     runStatus.textContent = reportStatus('Report returned', result);
@@ -873,8 +1019,62 @@ function restoreRunInputs(result) {
   configField.value = Object.keys(extras).length ? JSON.stringify(extras, null, 2) : '';
 }
 
+async function loadCombinedReports(value) {
+  const runIds = value.split(',');
+  if (!runIds.length || runIds.length > 3 || runIds.some(id => !validRunId(id)) || new Set(runIds).size !== runIds.length) {
+    showError('The combined report link must contain one to three distinct valid run IDs.');
+    return;
+  }
+  const current = { controller: new AbortController() };
+  activeRun = current;
+  setBusy(true, 'Loading reports…');
+  runStatus.textContent = 'Loading the combined report…';
+  try {
+    const results = await Promise.all(runIds.map(async runId => {
+      try {
+        const response = await fetch(`/api/runs/${runId}/report.json`, { credentials: 'same-origin', cache: 'no-store', signal: current.controller.signal });
+        const report = await response.json();
+        return response.ok && isReport(report) && report.runId === runId ? report : null;
+      } catch { return null; }
+    }));
+    if (activeRun !== current) return;
+    const reports = results.filter(Boolean);
+    if (!reports.length) throw new Error('These reports are unavailable on the current server. You can start a new check.');
+    const target = new URL(reports[0].submittedUrl).href;
+    if (reports.some(report => new URL(report.submittedUrl).href !== target) || new Set(reports.map(report => report.agentId)).size !== reports.length) {
+      throw new Error('A combined report must contain distinct agents for the same entered URL.');
+    }
+    restoreRunInputs(reports[0]);
+    const performance = reports.find(report => report.agentId === 'performance');
+    if (performance?.configuration.profile?.samples) {
+      const configuration = parseConfiguration(configField.value);
+      configuration.profile = { samples: performance.configuration.profile.samples };
+      configField.value = JSON.stringify(configuration, null, 2);
+    }
+    for (const option of form.querySelectorAll('input[name="agent"]')) option.checked = option.value === 'all';
+    const entries = Object.keys(agents).map(agentId => {
+      const report = reports.find(report => report.agentId === agentId);
+      return report ? { agentId, report } : { agentId, error: 'No saved report is available for this agent in this combined view.' };
+    });
+    renderCombined(reports[0].submittedUrl, entries, true);
+    runStatus.textContent = `${reports.length} of 3 reports returned. Saved results loaded; check each collection date.`;
+  } catch (error) {
+    if (activeRun !== current) return;
+    showError(error instanceof Error ? error.message : 'The combined report could not be loaded.');
+    runStatus.textContent = '';
+  } finally {
+    if (activeRun === current) {
+      activeRun = null;
+      setBusy(false);
+    }
+  }
+}
+
 async function loadSavedReport() {
-  const runId = new URLSearchParams(window.location.search).get('run');
+  const params = new URLSearchParams(window.location.search);
+  const combined = params.get('runs');
+  if (combined !== null) return loadCombinedReports(combined);
+  const runId = params.get('run');
   if (runId === null) return;
   if (!validRunId(runId)) {
     showError('The report link has an invalid run ID.');
@@ -928,6 +1128,7 @@ async function checkRuntime() {
   }
 }
 
+form.addEventListener('change', () => { if (!activeRun) setBusy(false); });
 updateBaselineSelection();
 checkRuntime();
 loadSavedReport();

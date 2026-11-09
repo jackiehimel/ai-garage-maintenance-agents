@@ -8,6 +8,8 @@ Run three independent checks against public HTTPS pages through the standalone S
 | Accessibility Regression | Axe findings and affected elements, configured keyboard states, focus assertions, and manual review coverage |
 | Performance Regression | Repeated desktop Lighthouse navigation, per-sample artifacts, metric distributions, and compatible baseline deltas |
 
+Choose **Run all three agents** to enter one URL and receive a combined summary with a downloadable PDF. The agents run sequentially to keep performance measurements isolated. Individual agent runs remain available. A failed agent does not discard the other results.
+
 Each run identifies the tested URL, records incomplete coverage, and separates measured observations from supplied evidence and AI interpretation. Export the HTML report, JSON report, and portable baseline from the interface. See the full scope and delivery checks in [SPEC.md](SPEC.md) and [issue #1](https://github.com/jackiehimel/ai-garage-maintenance-agents/issues/1).
 
 ## Run on a Chromium-capable host
@@ -45,7 +47,7 @@ The same `BROWSER_RUNTIME=github-actions` setting works with `npm run agent`. Pr
 
 ## Verified delivery state
 
-All three agents have real runs against Solvd and example.com, successful live assessments, and compatible baseline repeats. The local interface accepts a URL and calls these same agents; a performance run was also completed through its controls. Saved report links use `http://127.0.0.1:4175/?run=<run-id>`. HTML, JSON, baseline and raw-artifact export endpoints were checked against retained evidence. The latest source passes 59 offline tests, type checking and build, including GitHub Actions CI.
+All three agents have real runs against Solvd and example.com, successful live assessments, and compatible baseline repeats. The local interface accepts a URL and calls these same agents; a performance run was also completed through its controls. Saved report links use `http://127.0.0.1:4175/?run=<run-id>`. HTML, JSON, baseline and raw-artifact export endpoints were checked against retained evidence. The original delivery checks below are historical. Current branch CI and the per-agent capability comparison are tracked in [the manager-readiness plan](docs/plans/2026-11-08-1821-feat-manager-report-readiness-plan.md); these earlier runs do not establish acceptance of later changes.
 
 | Capability | Verified example |
 | --- | --- |
