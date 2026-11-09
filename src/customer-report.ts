@@ -137,7 +137,7 @@ function a11y(report: AgentReport, section: CustomerSection): void {
     } else if (rule === 'label') {
       section.findings.push(make('Form fields need clear labels', 'People using assistive technology may not know what to enter.', 'Connect a descriptive label to each affected field and keep instructions visible.', 'Design + development'));
     } else {
-      section.findings.push(make('Additional accessibility checks need attention', `${plural(group.length,'recorded item')} require context before deciding the best change.`, 'Have an accessibility specialist inspect these locations and identify the user impact before changing the page.', 'Accessibility specialist', 'Investigation first'));
+      section.findings.push(make('Additional accessibility checks need attention', `${plural(group.length,'recorded item')} ${group.length===1?'requires':'require'} context before deciding the best change.`, 'Have an accessibility specialist inspect these locations and identify the user impact before changing the page.', 'Accessibility specialist', 'Investigation first'));
     }
   }
   const buckets = new Map<string, {title:string;count:number;body:string}>();

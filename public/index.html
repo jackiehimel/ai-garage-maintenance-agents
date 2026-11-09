@@ -18,12 +18,14 @@
     </div>
   </header>
   <main id="main" class="wrap" tabindex="-1">
-    <div class="hero">
+    <div class="hero" id="hero">
       <p class="hero-kicker"><span></span> SOLVD WEBSITE REVIEW</p>
       <h1>See how your website is doing</h1>
       <p>Check SEO, accessibility and speed. Get clear findings, practical next steps and a report to share.</p>
     </div>
 
+    <details id="new-review" class="new-review" open>
+      <summary><span class="new-review-label">Run another check</span><span class="new-review-hint">Choose checks and enter a page</span></summary>
     <form id="run-form" class="workspace">
       <fieldset id="run-controls">
         <legend class="visually-hidden">Run settings</legend>
@@ -47,7 +49,7 @@
                   <span class="radio-indicator" aria-hidden="true"></span>
                 </span>
                 <span class="agent-name" id="seo-name">SEO check</span>
-                <span class="agent-description" id="seo-description">Inspect crawl signals, indexing directives, canonicals, sitemaps, and structured data.</span>
+                <span class="agent-description" id="seo-description">See whether search engines can find, read and correctly list your pages.</span>
               </span>
             </label>
             <label class="agent-option">
@@ -90,7 +92,7 @@
           <p id="url-help" class="field-help">Enter a website such as solvd.com. We add https:// automatically.</p>
 
           <details id="advanced" class="advanced">
-            <summary>Advanced <span class="optional">Optional settings and baseline</span></summary>
+            <summary>Developer options <span class="optional">Custom pages and comparison with an earlier run (JSON)</span></summary>
             <div class="advanced-body">
               <div>
                 <label class="field-label" for="configuration">Additional configuration (JSON)</label>
@@ -111,15 +113,19 @@
         </div>
       </fieldset>
 
-      <div class="status-box">
-        <details class="runtime-details"><summary>Run details</summary><p id="runtime-state" class="field-help"></p></details>
-        <p id="run-status" role="status" aria-live="polite" aria-atomic="true"></p>
-        <p id="run-error" class="error-message" role="alert" hidden></p>
-      </div>
     </form>
+    </details>
+    <div class="status-box" id="status-box">
+      <details class="runtime-details"><summary>Run details</summary><p id="runtime-state" class="field-help"></p></details>
+      <p id="run-status" role="status" aria-live="polite" aria-atomic="true"></p>
+      <p id="run-error" class="error-message" role="alert" hidden></p>
+    </div>
 
-    <section id="recent-reviews" class="report-panel recent-reviews" aria-labelledby="recent-title"><h2 id="recent-title">Recent reviews</h2><div id="recent-list"><p>No saved reviews yet. Run a check to get started.</p></div></section>
     <section id="report" class="report" aria-labelledby="report-title" hidden></section>
+    <details id="recent-reviews" class="report-panel recent-reviews">
+      <summary><span id="recent-title">Review history</span> <span id="recent-count" class="recent-count"></span></summary>
+      <div id="recent-list"><p>No saved reviews yet. Run a check to get started.</p></div>
+    </details>
     <noscript><p class="error-message">Enable JavaScript to run checks and view their results.</p></noscript>
   </main>
   <footer class="site-footer"><div>Solvd <span>·</span> Website Maintenance</div></footer>

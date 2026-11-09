@@ -283,3 +283,73 @@ input[type="file"]::file-selector-button { padding: 7px 9px; margin-right: 8px; 
 .recent-reviews { margin: 2rem 0; }
 .recent-review { padding: 1rem 0; border-top: 1px solid var(--border, #dce5e0); }
 .recent-review p { margin: .35rem 0; }
+
+/* Report-first layout: once a report is open it leads the page; the form folds into one bar. */
+.new-review > summary { display: none; }
+body[data-view="report"] .hero, body[data-view="technical"] .hero { display: none; }
+body[data-view="report"] .wrap, body[data-view="technical"] .wrap { padding-top: 18px; }
+body[data-view="report"] .new-review > summary, body[data-view="technical"] .new-review > summary {
+  display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; padding: 11px 16px; border: 1px solid var(--rule-strong); border-radius: 12px; background: var(--card); list-style: none;
+}
+.new-review > summary::-webkit-details-marker { display: none; }
+.new-review-label { color: var(--accent); font-weight: 700; font-size: .93rem; }
+.new-review-label::before { content: "+"; display: inline-block; width: 1.1em; font-weight: 700; }
+.new-review[open] .new-review-label::before { content: "\2212"; }
+.new-review-hint { color: var(--ink-soft); font-size: .82rem; }
+body[data-view="report"] .new-review[open] > summary, body[data-view="technical"] .new-review[open] > summary { margin-bottom: 12px; }
+body[data-view="report"] .runtime-details, body[data-view="technical"] .runtime-details { display: none; }
+body[data-view="report"] #run-status:not([data-running="true"]), body[data-view="technical"] #run-status:not([data-running="true"]) { font-size: .8rem; }
+body[data-view="report"] .report, body[data-view="technical"] .report { margin-top: 14px; }
+
+/* Summary */
+.customer-overview .report-target { font-size: .95rem; color: var(--ink-soft); }
+.customer-overview > .customer-headline { margin-top: 12px; font-size: 1.22rem; line-height: 1.4; font-weight: 650; color: var(--green-deep); }
+.customer-overview > .actions { margin-top: 16px; }
+.customer-overview .verdict-grid { margin: 22px 0 14px; }
+.verdict-card[data-level="poor"] { background: var(--error-soft); border-color: var(--error); }
+.verdict-breakdown { font-size: .86rem; font-weight: 650; color: var(--ink); }
+.customer-next-step .button.primary { border-color: var(--card); background: var(--card); color: var(--green-deep); }
+.customer-next-step .button.primary:hover { background: var(--accent-soft); }
+.customer-next-step .button:not(.primary) { border-color: var(--green-light); background: transparent; color: var(--card); }
+.customer-next-step .button:not(.primary):hover { background: var(--accent); }
+.customer-next-step .actions { margin-top: 20px; }
+.customer-next-step .meta { color: var(--green-light); }
+.customer-next-step :focus-visible { outline-color: var(--card); }
+
+/* Sticky section links */
+.section-nav { position: sticky; top: 0; z-index: 2; margin: 0 -4px; padding: 9px 14px; border: 1px solid var(--rule); border-radius: 12px; background: var(--paper); box-shadow: 0 6px 14px var(--shadow); font-weight: 650; }
+.section-nav a { text-decoration: none; padding: 3px 0; }
+.section-nav a:hover { text-decoration: underline; }
+.customer-section, .customer-next-step, .customer-overview { scroll-margin-top: 64px; }
+
+/* Sections: what we checked, then issues, then everything optional behind a disclosure */
+.customer-scope { font-size: .86rem; color: var(--ink-soft); }
+.finding-group-label { margin-top: 26px; font-size: .8rem !important; letter-spacing: .08em; text-transform: uppercase; color: var(--ink-soft) !important; }
+.finding-group-label + .customer-finding { margin-top: 10px; }
+.finding-action { font-weight: 400; }
+.finding-action-label { font-weight: 700; }
+.finding-details, .customer-collapsed, .review-group { margin-top: 12px; }
+.finding-details > summary, .customer-collapsed > summary, .review-group > summary { color: var(--accent); font-size: .88rem; font-weight: 650; }
+.customer-collapsed { padding: 12px 16px; border: 1px solid var(--rule); border-radius: 10px; }
+.customer-collapsed.customer-positives { margin: 12px 0 0; padding: 12px 16px; background: #f0f6f0; border-color: #cfe1d3; }
+.customer-collapsed > .customer-finding:first-of-type { margin-top: 12px; }
+.customer-followup .review-group > summary { color: var(--ink); font-size: .93rem; }
+.finding-details .report-list { font-size: .86rem; color: var(--ink-soft); }
+.compare-table { min-width: 0 !important; margin-top: 16px; max-width: 640px; }
+.compare-table td strong { display: block; font-size: 1.15rem; letter-spacing: -.02em; }
+.compare-note { font-size: .78rem; font-weight: 650; }
+.compare-table td[data-tone="good"] .compare-note { color: #245b37; }
+.compare-table td[data-tone="attention"] .compare-note { color: #7a4308; }
+.customer-images { grid-template-columns: repeat(auto-fit, minmax(200px, 320px)); }
+
+/* Technical view and history */
+.technical-back { margin: 0 !important; }
+.recent-reviews { margin: 18px 0 0; }
+.recent-reviews > summary { font-weight: 700; color: var(--green-deep); }
+.recent-count { color: var(--ink-soft); font-weight: 500; font-size: .88rem; }
+.recent-review { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 16px; padding: .8rem 0; border-top: 1px solid var(--rule); }
+.recent-review:first-child { margin-top: 12px; }
+.recent-review .text-link { font-weight: 650; }
+.recent-review p { margin: 0; font-size: .86rem; }
+.recent-review p:last-child { grid-column: 1 / -1; color: var(--ink-soft); }
+@media (max-width: 560px) { .recent-review { grid-template-columns: 1fr; } .section-nav { font-size: .8rem; gap: 4px 12px; } }

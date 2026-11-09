@@ -12,6 +12,35 @@ const runStatus = document.querySelector('#run-status');
 const runError = document.querySelector('#run-error');
 const reportPanel = document.querySelector('#report');
 const runtimeState = document.querySelector('#runtime-state');
+const newReview = document.querySelector('#new-review');
+const historyPanel = document.querySelector('#recent-reviews');
+const recentCount = document.querySelector('#recent-count');
+
+// 'start' shows the hero and the form; 'report' and 'technical' put the report first and fold the form away.
+function setView(mode) {
+  document.body.dataset.view = mode;
+  newReview.open = mode === 'start';
+  historyPanel.open = mode === 'start';
+}
+const reportMemory = 'maintenance-demo:last-customer-report';
+function rememberCustomerReport(reports, scope) {
+  try {
+    if (typeof sessionStorage === 'undefined') return;
+    sessionStorage.setItem(reportMemory, JSON.stringify({ scope, runIds: reports.map(report => report.runId) }));
+  } catch { /* The technical view falls back to the single-run customer link. */ }
+}
+function customerReportLink(runId) {
+  try {
+    if (typeof sessionStorage !== 'undefined') {
+      const saved = JSON.parse(sessionStorage.getItem(reportMemory) || 'null');
+      if (saved && Array.isArray(saved.runIds) && saved.runIds.every(validRunId) && saved.runIds.includes(runId) && (saved.runIds.length > 1 || saved.scope === 'all')) {
+        return `/?${new URLSearchParams({ scope: saved.scope === 'all' ? 'all' : 'selected', runs: saved.runIds.join(',') })}`;
+      }
+    }
+  } catch { /* Fall through to the single-run link. */ }
+  return `/?run=${runId}`;
+}
+
 
 const agents = {
   'seo-ai-search': {
@@ -239,7 +268,7 @@ function renderOverview(root, report, agent, runPath) {
   const completed = report.coverage.filter((item) => item.status === 'complete').length;
   indicators.append(
     badge(`Collection: ${statusText(report.collectionStatus)}`, report.collectionStatus === 'failed' ? 'error' : report.collectionStatus === 'partial' ? 'warn' : ''),
-    badge(`AI assessment: ${statusText(report.assessment.status)}`, report.assessment.status === 'unavailable' ? 'warn' : ''),
+    ...(report.assessment.status === 'unavailable' ? [] : [badge(`AI assessment: ${statusText(report.assessment.status)}`)]),
     badge(`Comparison: ${statusText(report.comparison.status)}`, report.comparison.status === 'incompatible' ? 'warn' : ''),
   );
   overview.append(element('p', 'eyebrow', 'Run report'), title, indicators);
@@ -644,8 +673,12 @@ function renderEvidence(root, report, anchors) {
 
 function renderRunDetails(root, report, anchors, runPath) {
   const diagnostics = section(root, 'diagnostics', 'Diagnostics');
-  if (report.diagnostics?.length) itemList(diagnostics, report.diagnostics);
-  else paragraph(diagnostics, 'No diagnostics were recorded.');
+  if (report.diagnostics?.length) {
+    const recorded = element('details', 'supporting-details');
+    recorded.append(element('summary', '', `Recorded collector messages (${report.diagnostics.length})`));
+    paragraph(recorded, 'Raw messages from the page and the collector. Blocked third-party requests are expected: the read-only collector does not load them.', 'meta');
+    itemList(recorded, report.diagnostics); diagnostics.append(recorded);
+  } else paragraph(diagnostics, 'No diagnostics were recorded.');
   const artifacts = section(root, 'artifacts', 'Raw artifacts');
   if (!report.artifacts.length) paragraph(artifacts, 'No raw artifacts are listed for this run.');
   else if (report.retention.status !== 'saved') paragraph(artifacts, 'Some raw files may not be available because retention is limited.');
@@ -675,11 +708,16 @@ function renderReport(report) {
   for (const key of ['evidence', 'coverage', 'artifacts']) {
     anchors[key] = new Map(report[key].map((item, index) => [item.id, `run-${key}-${index + 1}`]));
   }
+  setView('technical');
+  const back = element('p', 'technical-back');
+  const backLink = element('a', 'button', '\u2190 Back to the customer report'); backLink.href = customerReportLink(report.runId);
+  back.append(backLink); root.append(back);
   const title = renderOverview(root, report, agent, runPath);
+  const hasAssessment = report.assessment.status !== 'unavailable';
   const nav = element('nav', 'report-nav');
   nav.setAttribute('aria-label', 'Report sections');
   for (const [id, text] of [
-    ['findings', 'Findings'], ...(report.agentId === 'accessibility' ? [['keyboard-sample','Keyboard sample']] : []), ['comparison', 'Comparison'], ['assessment', 'AI assessment'], ['measurements', 'Measurements'],
+    ['findings', 'Findings'], ...(report.agentId === 'accessibility' ? [['keyboard-sample','Keyboard sample']] : []), ['comparison', 'Comparison'], ...(hasAssessment ? [['assessment', 'AI assessment']] : []), ['measurements', 'Measurements'],
     ['coverage', 'Coverage'], ['evidence', 'Evidence'], ['diagnostics', 'Diagnostics'], ['artifacts', 'Raw artifacts'],
     ['run-configuration', 'Configuration'],
   ]) {
@@ -690,7 +728,7 @@ function renderReport(report) {
   root.append(nav);
   renderFindings(root, report, anchors);
   renderComparison(root, report.comparison);
-  renderAssessment(root, report.assessment, anchors.evidence);
+  if (hasAssessment) renderAssessment(root, report.assessment, anchors.evidence);
   renderKeyboardProbe(root, report);
   renderMeasurements(root, report.measurements);
   renderEvidence(root, report, anchors);
@@ -712,6 +750,7 @@ function combinedAddress(reports) {
 
 function renderCombinedProgress(targetUrl, entries, finished = false, baselineNote = '') {
   const reports = entries.flatMap(item => item.report ? [item.report] : []);
+  setView('report');
   const root = document.createDocumentFragment();
   const overview = element('div', 'report-panel report-overview');
   const title = element('h2', '', finished ? 'Your collected results' : 'Reviewing your website');
@@ -743,52 +782,189 @@ function renderCombinedProgress(targetUrl, entries, finished = false, baselineNo
 }
 
 const customerTone = tone => ['good', 'attention', 'limited'].includes(tone) ? tone : 'limited';
+const countNoun = (count, noun) => `${count} ${noun}${count === 1 ? '' : 's'}`;
+const sentenceCase = text => typeof text === 'string' && text ? text[0].toUpperCase() + text.slice(1) : text;
+
+// The summary line counts every area, including the ones that could not be checked.
+function areaSummary(sections) {
+  const attention = sections.filter(section => section.rating.tone === 'attention').length;
+  const good = sections.filter(section => section.rating.tone === 'good').length;
+  const limited = sections.length - attention - good;
+  const parts = [];
+  if (attention) parts.push(`${countNoun(attention, 'area')} ${attention === 1 ? 'needs' : 'need'} attention`);
+  if (good) parts.push(`${countNoun(good, 'area')} ${good === 1 ? 'looks' : 'look'} sound in the checks that ran`);
+  if (limited) parts.push(`${countNoun(limited, 'area')} could not be assessed`);
+  return `${countNoun(sections.length, 'area')} reviewed: ${parts.join('; ')}.`;
+}
+
+// "7 findings" can be two kinds of problem; say so where the two numbers differ.
+function issueBreakdown(section) {
+  const measured = section.findings.filter(finding => finding.kind === 'finding');
+  const affected = measured.reduce((total, finding) => total + (Number.isFinite(finding.count) ? finding.count : 1), 0);
+  return measured.length && affected > measured.length ? `${countNoun(measured.length, 'issue type')} affecting ${countNoun(affected, 'element')}` : '';
+}
+
+const scopeLine = (scope, label) => !scope ? '' : /\bchecked\b/i.test(scope) ? scope : `${label}: ${scope}`;
+
+function disclosure(className, summary, open = false) {
+  const node = element('details', className);
+  node.open = open;
+  node.append(element('summary', '', summary));
+  return node;
+}
+
+function deviceComparison(parent, metrics) {
+  const parsed = metrics.map(item => {
+    const match = /^(Mobile|Desktop)(?: - | )(.+)$/.exec(item.label);
+    return match ? { ...item, device: match[1], name: sentenceCase(match[2]) } : null;
+  });
+  const devices = [...new Set(parsed.filter(Boolean).map(item => item.device))];
+  if (parsed.some(item => !item) || devices.length < 2) return false;
+  const names = [...new Set(parsed.map(item => item.name))];
+  const scroll = element('div', 'table-scroll');
+  const tableNode = element('table', 'compare-table');
+  const head = element('thead'), headRow = element('tr');
+  for (const name of ['Measure', ...devices]) { const cell = element('th', '', name); cell.scope = 'col'; headRow.append(cell); }
+  head.append(headRow);
+  const body = element('tbody');
+  for (const name of names) {
+    const row = element('tr');
+    const label = element('th', '', name); label.scope = 'row'; row.append(label);
+    for (const device of devices) {
+      const item = parsed.find(entry => entry.name === name && entry.device === device);
+      const cell = element('td');
+      if (item) {
+        cell.dataset.tone = customerTone(item.tone);
+        cell.append(element('strong', '', item.value), element('span', 'compare-note', item.tone === 'good' ? 'Good' : 'Needs work'));
+      } else cell.textContent = '—';
+      row.append(cell);
+    }
+    body.append(row);
+  }
+  tableNode.append(element('caption', 'visually-hidden', 'Mobile and desktop lab measurements'), head, body);
+  scroll.append(tableNode);
+  parent.append(scroll);
+  return true;
+}
+
+function findingCard(finding, sharedCheck) {
+  const item = element('article', 'customer-finding'); item.dataset.kind = finding.kind;
+  paragraph(item, finding.kind === 'review' ? 'Needs review' : finding.kind === 'observation' ? 'Observation' : 'Finding', 'finding-kind');
+  item.append(element('h3', '', finding.title));
+  paragraph(item, finding.impact, 'finding-impact');
+  if (finding.recommendation) {
+    const action = element('p', 'finding-action');
+    action.append(element('span', 'finding-action-label', 'Recommended action: '), finding.recommendation);
+    item.append(action);
+  }
+  if (finding.owner) paragraph(item, `Suggested owner: ${finding.owner}`, 'meta');
+  const shown = finding.where.slice(0, 2);
+  if (shown.length && finding.where.length <= 2) paragraph(item, `Where: ${shown.join('; ')}`, 'finding-where');
+  if (finding.where.length > 2 || (finding.verification && !sharedCheck)) {
+    const more = disclosure('finding-details', finding.where.length > 2 ? `Affected locations (${finding.where.length}) and how to check the fix` : 'How to check the fix');
+    if (finding.where.length > 2) itemList(more, finding.where);
+    if (finding.verification && !sharedCheck) paragraph(more, `How to check the result: ${finding.verification}`);
+    item.append(more);
+  }
+  return item;
+}
 
 function renderCustomerReport(view, reports, baselineNote = '', scope = 'all') {
+  setView('report');
+  rememberCustomerReport(reports, scope);
   const root = document.createDocumentFragment();
+  const pdfEndpoint = `/api/report.pdf?runs=${reports.map(report => report.runId).join(',')}&scope=${scope}`;
   const overview = element('div', 'report-panel customer-overview');
+  overview.id = 'customer-overview';
   overview.append(element('p', 'eyebrow', 'Solvd website review'));
   const title = element('h2', '', 'Your website at a glance');
   title.id = 'report-title'; title.tabIndex = -1; overview.append(title);
-  paragraph(overview, view.targetUrl, 'report-target');
-  paragraph(overview, view.headline, 'customer-headline');
-  paragraph(overview, view.dateLabel, 'meta');
+  paragraph(overview, [view.targetUrl, view.dateLabel].filter(Boolean).join(' · '), 'report-target');
+  paragraph(overview, areaSummary(view.sections), 'customer-headline');
+  const actions = element('div', 'actions');
+  const message = element('p', 'meta'); message.setAttribute('role', 'status');
+  endpointDownload(actions, scope === 'all' ? 'Download combined PDF' : 'Download PDF', pdfEndpoint, 'solvd-website-maintenance.pdf', message).className = 'button primary';
+  const jump = element('a', 'button', 'See your next step'); jump.href = '#customer-next-step'; actions.append(jump);
+  overview.append(actions, message);
   const cards = element('div', 'verdict-grid');
   for (const section of view.sections) {
     const card = element('article', 'verdict-card'); card.dataset.tone = customerTone(section.rating.tone);
+    if (Number.isFinite(section.rating.score) && section.rating.score < 50) card.dataset.level = 'poor';
     card.append(element('h3', '', section.title));
     if (Number.isFinite(section.rating.score)) {
       const score = element('div', 'customer-score');
       score.append(element('strong', '', section.rating.score), element('span', '', '/ 100')); card.append(score);
     }
     paragraph(card, section.rating.label, 'verdict-label');
+    paragraph(card, issueBreakdown(section), 'verdict-breakdown');
     paragraph(card, section.headline, 'verdict-summary');
-    paragraph(card, section.rating.basis, 'verdict-basis');
+    paragraph(card, Number.isFinite(section.rating.score) ? sentenceCase(section.rating.basis) : '', 'verdict-basis');
+    paragraph(card, scopeLine(section.scope, 'Checked'), 'verdict-basis');
     const link = element('a', 'text-link', 'See findings and next steps'); link.href = `#customer-${section.agentId}`; card.append(link);
     cards.append(card);
   }
   overview.append(cards);
-  const actions = element('div', 'actions');
-  const message = element('p', 'meta'); message.setAttribute('role', 'status');
-  endpointDownload(actions, scope === 'all' ? 'Download combined PDF' : 'Download PDF', `/api/report.pdf?runs=${reports.map(report => report.runId).join(',')}&scope=${scope}`, 'solvd-website-maintenance.pdf', message);
-  overview.append(actions, message);
+  paragraph(overview, 'Each area is measured differently and on its own sample of pages, so the three results are not a like-for-like score.', 'customer-key');
   paragraph(overview, view.key, 'customer-key');
   paragraph(overview, baselineNote, 'meta'); root.append(overview);
+
+  const nav = element('nav', 'report-nav section-nav');
+  nav.setAttribute('aria-label', 'Report sections');
+  for (const [id, text] of [['customer-overview', 'Summary'], ...view.sections.map(section => [`customer-${section.agentId}`, section.title]), ['customer-next-step', 'Next step']]) {
+    const link = element('a', '', text); link.href = `#${id}`; nav.append(link);
+  }
+  root.append(nav);
 
   for (const section of view.sections) {
     const panel = element('section', 'report-panel customer-section');
     panel.id = `customer-${section.agentId}`;
     const heading = element('h2', '', section.title); heading.id = `${panel.id}-title`;
     panel.setAttribute('aria-labelledby', heading.id); panel.append(heading);
-    const label = element('p', 'section-verdict', section.rating.label); label.dataset.tone = customerTone(section.rating.tone); panel.append(label);
+    const label = element('p', 'section-verdict', [section.rating.label, issueBreakdown(section)].filter(Boolean).join(' · ')); label.dataset.tone = customerTone(section.rating.tone); panel.append(label);
     paragraph(panel, section.headline, 'customer-headline');
-    if (section.metrics.length) {
+    paragraph(panel, scopeLine(section.scope, 'What we checked'), 'customer-scope');
+    const compared = section.metrics.length > 0 && deviceComparison(panel, section.metrics);
+    if (section.metrics.length && !compared) {
       const metrics = element('div', 'customer-metrics');
       for (const item of section.metrics) {
         const metric = element('div', 'customer-metric'); metric.dataset.tone = customerTone(item.tone);
         paragraph(metric, item.label, 'metric-label'); paragraph(metric, item.value, 'metric-value'); paragraph(metric, item.interpretation, 'metric-meaning'); metrics.append(metric);
       }
       panel.append(metrics);
+    }
+    const checks = [...new Set(section.findings.map(finding => finding.verification).filter(Boolean))];
+    const sharedCheck = checks.length === 1 ? checks[0] : '';
+    const detected = section.findings.filter(finding => finding.kind === 'finding');
+    const reviews = section.findings.filter(finding => finding.kind === 'review');
+    const observations = section.findings.filter(finding => finding.kind !== 'finding' && finding.kind !== 'review');
+    if (detected.length) panel.append(element('h3', 'finding-group-label', `Detected issues (${detected.length})`));
+    for (const finding of detected) panel.append(findingCard(finding, sharedCheck));
+    if (reviews.length) panel.append(element('h3', 'finding-group-label', `Needs a closer look (${reviews.length})`));
+    for (const finding of reviews) panel.append(findingCard(finding, sharedCheck));
+    if (sharedCheck) paragraph(panel, `How to check the results: ${sharedCheck}`, 'finding-check');
+    if (observations.length) {
+      const other = disclosure('customer-collapsed', `Other observations (${observations.length})`);
+      for (const finding of observations) other.append(findingCard(finding, sharedCheck));
+      panel.append(other);
+    }
+    if (section.reviewGroups.length) {
+      const followup = element('div', 'customer-followup'); followup.append(element('h3', '', 'What Solvd can review next'));
+      for (const group of section.reviewGroups) {
+        const count = Number.isFinite(group.count) && group.count > 0 ? ` · ${group.count} item${group.count === 1 ? '' : 's'}` : '';
+        const item = disclosure('review-group', `${group.title}${count}`); paragraph(item, group.body); followup.append(item);
+      }
+      panel.append(followup);
+    }
+    if (section.positives.length) {
+      const positives = disclosure('customer-collapsed customer-positives', `What is working well (${section.positives.length})`, !section.findings.length);
+      itemList(positives, section.positives); panel.append(positives);
+    }
+    const details = disclosure('customer-collapsed', 'Test details and page captures');
+    let hasDetails = false;
+    if (compared) {
+      const notes = element('ul', 'report-list');
+      for (const item of section.metrics) notes.append(element('li', '', `${item.label}: ${item.value}. ${item.interpretation}`));
+      details.append(notes); hasDetails = true;
     }
     for (const samples of section.sampleScores) {
       if (!samples.values.length) continue;
@@ -802,33 +978,7 @@ function renderCustomerReport(view, reports, baselineNote = '', scope = 'all') {
         const bar = element('span', 'sample-fill'); bar.setAttribute('style', `width:${Math.min(100, Math.max(0, value))}%`); track.append(bar);
         track.setAttribute('aria-hidden', 'true'); row.append(track, element('strong', '', `${value} / 100`)); bars.append(row);
       }
-      figure.append(bars); panel.append(figure);
-    }
-    if (section.positives.length) {
-      const positives = element('div', 'customer-positives'); positives.append(element('h3', '', 'What is working well')); itemList(positives, section.positives); panel.append(positives);
-    }
-    const checks = [...new Set(section.findings.map(finding => finding.verification).filter(Boolean))];
-    const sharedCheck = checks.length === 1 ? checks[0] : '';
-    for (const finding of section.findings) {
-      const item = element('article', 'customer-finding'); item.dataset.kind = finding.kind;
-      paragraph(item, finding.kind === 'review' ? 'Needs review' : finding.kind === 'observation' ? 'Observation' : 'Finding', 'finding-kind');
-      item.append(element('h3', '', finding.title));
-      paragraph(item, finding.impact, 'finding-impact');
-      if (finding.where.length) paragraph(item, `Where: ${finding.where.join('; ')}`, 'finding-where');
-      paragraph(item, finding.recommendation, 'finding-action');
-      const handoff = [finding.owner && `Suggested owner: ${finding.owner}`].filter(Boolean);
-      if (handoff.length) paragraph(item, handoff.join(' · '), 'meta');
-      if (finding.verification && !sharedCheck) paragraph(item, `How to check the result: ${finding.verification}`, 'finding-check');
-      panel.append(item);
-    }
-    if (sharedCheck) paragraph(panel, `How to check the results: ${sharedCheck}`, 'finding-check');
-    if (section.reviewGroups.length) {
-      const followup = element('div', 'customer-followup'); followup.append(element('h3', '', 'What Solvd can review next'));
-      for (const group of section.reviewGroups) {
-        const count = Number.isFinite(group.count) && group.count > 0 ? ` · ${group.count} item${group.count === 1 ? '' : 's'}` : '';
-        const item = element('div', 'review-group'); item.append(element('h4', '', `${group.title}${count}`)); paragraph(item, group.body); followup.append(item);
-      }
-      panel.append(followup);
+      figure.append(bars); details.append(figure); hasDetails = true;
     }
     if (section.images.length) {
       const gallery = element('div', 'customer-images');
@@ -837,10 +987,11 @@ function renderCustomerReport(view, reports, baselineNote = '', scope = 'all') {
         const figure = element('figure'); const img = element('img');
         const embedded = typeof image.dataUrl === 'string' && image.dataUrl.length < 2_000_000 && /^data:image\/(?:jpeg|png);base64,[A-Za-z0-9+/=]+$/.test(image.dataUrl);
         img.src = embedded ? image.dataUrl : `/api/runs/${image.runId}/artifacts/${image.artifactId}`; img.alt = image.caption; img.loading = 'lazy';
-        figure.append(img, element('figcaption', '', image.caption)); gallery.append(figure);
+        figure.append(img, element('figcaption', '', image.caption)); gallery.append(figure); hasDetails = true;
       }
-      panel.append(gallery);
+      details.append(gallery);
     }
+    if (hasDetails) panel.append(details);
     paragraph(panel, section.comparison, 'customer-comparison');
     if (section.agentAssessment?.text) {
       const assessment = element('aside', 'customer-agent-assessment');
@@ -849,15 +1000,23 @@ function renderCustomerReport(view, reports, baselineNote = '', scope = 'all') {
       paragraph(assessment, section.agentAssessment.note, 'meta');
       panel.append(assessment);
     }
-    paragraph(panel, [section.scope, section.limits].filter(Boolean).join(' '), 'customer-limits');
+    paragraph(panel, sentenceCase(section.limits), 'customer-limits');
     const report = reports.find(report => report.agentId === section.agentId);
     if (report) {
       const link = element('a', 'technical-link', 'Technical evidence'); link.href = `/?run=${report.runId}&view=technical`; panel.append(link);
     }
     root.append(panel);
   }
-  const next = element('section', 'report-panel customer-next-step'); next.append(element('p', 'eyebrow', 'Your next step'), element('h2', '', view.nextStep.title));
-  paragraph(next, view.nextStep.body, 'customer-headline'); itemList(next, view.nextStep.items); root.append(next);
+  const next = element('section', 'report-panel customer-next-step'); next.id = 'customer-next-step';
+  next.append(element('p', 'eyebrow', 'Your next step'), element('h2', '', view.nextStep.title));
+  paragraph(next, view.nextStep.body, 'customer-headline'); itemList(next, view.nextStep.items);
+  const nextActions = element('div', 'actions');
+  const nextMessage = element('p', 'meta'); nextMessage.setAttribute('role', 'status');
+  const share = element('a', 'button primary', 'Email a summary of these findings');
+  share.href = `mailto:?subject=${encodeURIComponent(`Website review: ${view.targetUrl}`)}&body=${encodeURIComponent([`Solvd website review of ${view.targetUrl} (${view.dateLabel})`, '', areaSummary(view.sections), ...view.sections.map(section => `- ${section.title}: ${section.rating.label}${Number.isFinite(section.rating.score) ? ` (${section.rating.score}/100)` : ''}. ${section.headline}`), '', 'The full PDF report is attached separately.'].join('\n'))}`;
+  nextActions.append(share);
+  endpointDownload(nextActions, 'Download the PDF to share', pdfEndpoint, 'solvd-website-maintenance.pdf', nextMessage);
+  next.append(nextActions, nextMessage); root.append(next);
   reportPanel.replaceChildren(root); reportPanel.hidden = false;
   if (document.activeElement === document.body || document.activeElement === runButton) title.focus();
 }
@@ -1008,7 +1167,9 @@ async function parseBaselineFile(file) {
 
 function setBusy(busy, label = 'Running…') {
   controls.disabled = busy;
-  runLabel.textContent = busy ? label : new FormData(form).get('agent') === 'all' ? 'Run all three' : 'Run check';
+  const selected = new FormData(form).get('agent');
+  const name = Object.hasOwn(customerNames, selected) ? customerNames[selected] : '';
+  runLabel.textContent = busy ? label : selected === 'all' ? 'Run all three' : name ? `Run ${name.startsWith('SEO') ? name : name[0].toLowerCase() + name.slice(1)}` : 'Run check';
   runStatus.dataset.running = String(busy);
 }
 
@@ -1024,6 +1185,7 @@ form.addEventListener('submit', async (event) => {
   runError.textContent = '';
   const previousReportStatus = reportPanel.hidden ? '' : 'Showing the previous report.';
   const previousNodes = [...reportPanel.children];
+  const previousView = document.body.dataset.view;
   runStatus.textContent = previousReportStatus;
   const entered = urlField.value.trim();
   const targetUrl = /^[a-z][a-z0-9+.-]*:/i.test(entered) ? entered : `https://${entered}`;
@@ -1080,6 +1242,7 @@ form.addEventListener('submit', async (event) => {
     if (activeRun !== current) return;
     runStatus.textContent = previousReportStatus;
     reportPanel.replaceChildren(...previousNodes); reportPanel.hidden = !previousNodes.length;
+    setView(previousNodes.length ? previousView : 'start');
     showError(error instanceof Error && error.name !== 'AbortError' ? error.message : 'The run did not return a report.');
     if (stage === 'preparing') {
       advanced.open = true;
@@ -1139,6 +1302,7 @@ function restoreRunInputs(result) {
 async function loadCombinedReports(value) {
   const runIds = value.split(',');
   if (!runIds.length || runIds.length > 3 || runIds.some(id => !validRunId(id)) || new Set(runIds).size !== runIds.length) {
+    setView('start');
     showError('The combined report link must contain one to three distinct valid run IDs.');
     return;
   }
@@ -1180,6 +1344,7 @@ async function loadCombinedReports(value) {
     runStatus.textContent = `${reports.length} of 3 reports returned. ${ready ? 'Saved website review loaded.' : 'The customer summary is unavailable; collected results are preserved below.'}`;
   } catch (error) {
     if (activeRun !== current) return;
+    setView('start');
     showError(error instanceof Error ? error.message : 'The combined report could not be loaded.');
     runStatus.textContent = '';
   } finally {
@@ -1197,6 +1362,7 @@ async function loadSavedReport() {
   const runId = params.get('run');
   if (runId === null) return;
   if (!validRunId(runId)) {
+    setView('start');
     showError('The report link has an invalid run ID.');
     return;
   }
@@ -1225,6 +1391,7 @@ async function loadSavedReport() {
   } catch (error) {
     if (activeRun !== current) return;
     runStatus.textContent = '';
+    setView('start');
     showError(error instanceof Error ? error.message : 'The saved report could not be loaded.');
   } finally {
     if (activeRun === current) {
@@ -1253,6 +1420,10 @@ async function checkRuntime() {
   }
 }
 
+{
+  const params = new URLSearchParams(window.location.search);
+  setView(params.get('runs') !== null || params.get('run') !== null ? (params.get('view') === 'technical' && params.get('runs') === null ? 'technical' : 'report') : 'start');
+}
 form.addEventListener('change', () => { if (!activeRun) setBusy(false); });
 updateBaselineSelection();
 checkRuntime();
@@ -1260,6 +1431,13 @@ loadSavedReport();
 loadRecentReviews();
 
 
+function reviewRunIds(href) {
+  const params = new URLSearchParams(href.slice(2));
+  return { ids: (params.get('runs') ?? params.get('run') ?? '').split(',').filter(validRunId), combined: params.get('runs') !== null, all: params.get('scope') === 'all' };
+}
+function siteLabel(url) {
+  try { const parsed = new URL(url); return `${parsed.hostname.replace(/^www\./, '')}${parsed.pathname === '/' ? '' : parsed.pathname}`; } catch { return String(url); }
+}
 async function loadRecentReviews() {
   const root=document.querySelector('#recent-list');
   if(!root)return;
@@ -1267,13 +1445,25 @@ async function loadRecentReviews() {
     const response=await fetch('/api/reviews',{credentials:'same-origin',cache:'no-store'});
     const data=await response.json();
     if(!response.ok||!Array.isArray(data.reviews))return;
+    const valid=data.reviews.filter(review=>typeof review.href==='string'&&/^\/\?(?:run=run_[a-f0-9]{24}|scope=(?:all|selected)&runs=run_[a-f0-9]{24}(?:%2Crun_[a-f0-9]{24}){0,2})$/.test(review.href));
+    // A combined review already contains its individual runs; listing those again reads as duplicates.
+    const insideCombined=new Set(valid.flatMap(review=>{const entry=reviewRunIds(review.href);return entry.combined&&entry.ids.length>1?entry.ids:[];}));
+    const rows=valid.filter(review=>{const entry=reviewRunIds(review.href);return entry.combined||!insideCombined.has(entry.ids[0]);});
+    const here=new URLSearchParams(window.location.search);
+    const current=new Set((here.get('runs')??here.get('run')??'').split(','));
+    let currentSite='';try{currentSite=siteLabel(urlField.value.includes('://')?urlField.value:`https://${urlField.value}`);}catch{}
+    const rank=review=>siteLabel(review.url)===currentSite?0:1;
+    rows.sort((a,b)=>rank(a)-rank(b)||String(b.date).localeCompare(String(a.date)));
     root.replaceChildren();
-    if(!data.reviews.length){paragraph(root,'No saved reviews yet. Run a check to get started.');return;}
-    for(const review of data.reviews){
-      if(typeof review.href!=='string'||!/^\/\?(?:run=run_[a-f0-9]{24}|scope=(?:all|selected)&runs=run_[a-f0-9]{24}(?:%2Crun_[a-f0-9]{24}){0,2})$/.test(review.href))continue;
+    recentCount.textContent=rows.length?`(${rows.length})`:'';
+    if(!rows.length){paragraph(root,'No saved reviews yet. Run a check to get started.');return;}
+    for(const review of rows){
+      const entry=reviewRunIds(review.href);
       const row=element('article','recent-review');
-      const link=element('a','text-link',review.url);link.href=review.href;row.append(link);
-      paragraph(row,new Date(review.date).toLocaleString(),'meta');paragraph(row,review.verdict);root.append(row);
+      const link=element('a','text-link',siteLabel(review.url));link.href=review.href;row.append(link);
+      const viewing=entry.ids.length&&entry.ids.every(id=>current.has(id))&&current.size===entry.ids.length;
+      paragraph(row,[new Date(review.date).toLocaleString(undefined,{dateStyle:'medium',timeStyle:'short'}),entry.all?'All three checks':entry.ids.length>1?`${entry.ids.length} checks`:'Single check',viewing?'Open now':''].filter(Boolean).join(' · '),'meta');
+      paragraph(row,review.verdict);root.append(row);
     }
   }catch{/* Existing results and running checks remain available during a history error. */}
 }
