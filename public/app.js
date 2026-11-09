@@ -805,6 +805,8 @@ function renderCustomerReport(view, reports, baselineNote = '') {
     if (section.positives.length) {
       const positives = element('div', 'customer-positives'); positives.append(element('h3', '', 'What is working well')); itemList(positives, section.positives); panel.append(positives);
     }
+    const checks = [...new Set(section.findings.map(finding => finding.verification).filter(Boolean))];
+    const sharedCheck = checks.length === 1 ? checks[0] : '';
     for (const finding of section.findings) {
       const item = element('article', 'customer-finding'); item.dataset.kind = finding.kind;
       paragraph(item, finding.kind === 'review' ? 'Needs review' : finding.kind === 'observation' ? 'Observation' : 'Finding', 'finding-kind');
@@ -814,9 +816,10 @@ function renderCustomerReport(view, reports, baselineNote = '') {
       paragraph(item, finding.recommendation, 'finding-action');
       const handoff = [finding.owner && `Suggested owner: ${finding.owner}`].filter(Boolean);
       if (handoff.length) paragraph(item, handoff.join(' · '), 'meta');
-      if (finding.verification) paragraph(item, `How to check the result: ${finding.verification}`, 'finding-check');
+      if (finding.verification && !sharedCheck) paragraph(item, `How to check the result: ${finding.verification}`, 'finding-check');
       panel.append(item);
     }
+    if (sharedCheck) paragraph(panel, `How to check the results: ${sharedCheck}`, 'finding-check');
     if (section.reviewGroups.length) {
       const followup = element('div', 'customer-followup'); followup.append(element('h3', '', 'What Solvd can review next'));
       for (const group of section.reviewGroups) {

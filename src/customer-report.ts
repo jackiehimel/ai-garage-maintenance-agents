@@ -168,10 +168,6 @@ function seo(report: AgentReport, section: CustomerSection): void {
   const actualPages = pages.length ? pages : unique(metadata.map(e => e.scope.page));
   if (actualPages.length) section.scope = `${plural(actualPages.length,'page')} checked: ${actualPages.map(pageLabel).join(', ')}.`;
   const findings = report.findings.filter(f => f.disposition === 'finding' || f.disposition === 'review-needed');
-  const measuredCount = findings.filter(f=>f.disposition==='finding').length;
-  const reviewCount = findings.length-measuredCount;
-  section.rating = { label:measuredCount ? `${plural(measuredCount,'finding')} ${measuredCount===1?'needs':'need'} attention` : reviewCount ? `${plural(reviewCount,'item')} ${reviewCount===1?'needs':'need'} review` : actualPages.length > 1 ? 'Sample checks look sound' : 'Initial checks look sound', tone:findings.length?'attention':'good',basis:`${plural(actualPages.length || report.configuration.pages.length,'page')} sampled; ${plural(measuredCount,'finding')}; ${plural(reviewCount,'item')} to review` };
-  section.headline = findings.length ? `${plural(findings.length,'search-readiness item')} ${findings.length === 1 ? 'needs' : 'need'} ${measuredCount?'attention':'review'} across the sampled pages.` : actualPages.length > 1 ? 'The sampled pages have useful search foundations in place.' : 'The homepage has useful search foundations; a wider page sample is the next step.';
   const definitions: Record<string,[string,string,string,string]> = {
     'seo.description-missing':['A page has no search description','This page has no description to explain its content before someone visits.','Write an accurate summary of this page for prospective visitors.','Content + SEO'],
     'seo.http-status':['A page could not be loaded successfully','Visitors and search crawlers may not receive the intended page.','Restore the intended page response or redirect visitors to the right destination.','Website developer'],
@@ -194,6 +190,9 @@ function seo(report: AgentReport, section: CustomerSection): void {
     const f=baseFinding(report,group,def[0],def[1],def[2],def[3],'Focused review','Repeat the page checks and confirm the intended search signals.'); f.where=unique(group.map(g=>pagePath(g.scope.page)));
     if(rule==='seo.description-missing') {
       f.title=f.where.length===1?`No search description on ${f.where[0]}`:`${plural(f.where.length,'page')} without a search description`;
+      if(group.every(g=>evidenceFor(report,g).some(e=>
+        !str(obj(e.data).reason) && ((e.kind==='seo.page-quality' && obj(e.data).descriptionStatus==='missing') ||
+        (/^seo\.(source|rendered)-metadata$/.test(e.kind) && typeof obj(e.data).description==='string' && !str(obj(e.data).description).trim()))))) f.kind='finding';
     }
     if(rule==='seo.canonical-target') {
       const targets=unique(group.flatMap(g=>evidenceFor(report,g).flatMap(e=>list(obj(e.data).canonical).map(c=>str(obj(c).url)))));
@@ -209,6 +208,7 @@ function seo(report: AgentReport, section: CustomerSection): void {
         } catch {return false;}
       });
       if(protocolOnly) {
+        if(group.every(g=>evidenceFor(report,g).some(e=>/^seo\.(source|rendered)-metadata$/.test(e.kind)&&!str(obj(e.data).reason)&&list(obj(e.data).canonical).length)))f.kind='finding';
         f.title='The preferred search address uses HTTP instead of HTTPS';
         f.impact=`Your page ${f.where.join(', ')} tells search engines its official address is the HTTP version of the same page; it should be HTTPS.`;
         f.recommendation='Replace the HTTP preferred address with the matching HTTPS address, then check the source and rendered page declarations.';
@@ -217,10 +217,15 @@ function seo(report: AgentReport, section: CustomerSection): void {
     }
     section.findings.push(f);
   }
+  const measuredCount = section.findings.filter(f=>f.kind==='finding').reduce((total,f)=>total+f.count,0);
+  const reviewCount = findings.length-measuredCount;
+  section.rating = { label:measuredCount ? `${plural(measuredCount,'finding')} ${measuredCount===1?'needs':'need'} attention` : reviewCount ? `${plural(reviewCount,'item')} ${reviewCount===1?'needs':'need'} review` : actualPages.length > 1 ? 'Sample checks look sound' : 'Initial checks look sound', tone:findings.length?'attention':'good',basis:`${plural(actualPages.length || report.configuration.pages.length,'page')} sampled; ${plural(measuredCount,'finding')}; ${plural(reviewCount,'item')} to review` };
+  section.headline = findings.length ? `${plural(findings.length,'search-readiness item')} ${findings.length === 1 ? 'needs' : 'need'} ${measuredCount?'attention':'review'} across the sampled pages.` : actualPages.length > 1 ? 'The sampled pages have useful search foundations in place.' : 'The homepage has useful search foundations; a wider page sample is the next step.';
   const goodMeta = metadata.filter(e => str(obj(e.data).title).trim() && str(obj(e.data).description).trim());
-  if (goodMeta.length) section.positives.push(`A page title and description are present on ${plural(new Set(goodMeta.map(e=>e.scope.page)).size,'checked page')}.`);
   const healthyQuality=quality.filter(e=>obj(e.data).titleStatus==='present'&&obj(e.data).descriptionStatus==='present');
-  if (healthyQuality.length) section.positives.push(`${plural(healthyQuality.length,'page')} ${healthyQuality.length===1?'has':'have'} a descriptive title and description under the checks applied.`);
+  const goodPages=unique([...goodMeta,...healthyQuality].map(e=>e.scope.page));
+  const missingDescriptionPages=unique(quality.filter(e=>obj(e.data).descriptionStatus==='missing').map(e=>pageLabel(e.scope.page)));
+  if(goodPages.length) section.positives.push(`${goodPages.length} of ${actualPages.length} pages have a title and description${missingDescriptionPages.length?`; ${missingDescriptionPages.join(', ')} ${missingDescriptionPages.length===1?'is':'are'} missing ${missingDescriptionPages.length===1?'its':'their'} description (see findings)`:''}.`);
   const summary = obj(report.evidence.find(e=>e.kind==='seo.sample-summary')?.data);
   if (pages.length>1 && Array.isArray(summary.duplicateTitles) && !summary.duplicateTitles.length && Array.isArray(summary.duplicateDescriptions) && !summary.duplicateDescriptions.length && healthyQuality.length===pages.length) section.positives.push('Titles and descriptions are distinct across the sampled pages.');
   const structured = report.evidence.filter(e=>/seo\.(source|rendered)-structured-data/.test(e.kind));
@@ -241,7 +246,7 @@ function performance(report: AgentReport, section: CustomerSection): void {
   const device=(p:Record<string,JsonValue>):'Mobile'|'Desktop'=>p.formFactor==='mobile'||p.profileId==='mobile-v1'?'Mobile':'Desktop';
   const devices=unique(valid.map(device));
   section.rating={label:score>=90?'Good lab result':score>=50?'Room to improve':'Needs attention',tone:score>=90?'good':'attention',score,basis:`${device(primary)} Lighthouse median; ${primary.succeeded ?? 0} samples`};
-  section.headline=`${device(primary)} performance scored ${score}/100. ${score>=90?'The measured loading experience is in Lighthouse\'s good range.':'There are measurable opportunities to improve the loading experience.'}`;
+  section.headline=mobileTimingHeadline(report)??`${device(primary)} performance scored ${score}/100. ${score>=90?'The measured loading experience is in Lighthouse\'s good range.':'There are measurable opportunities to improve the loading experience.'}`;
   section.scope=valid.map(p=>`${device(p)}: ${p.succeeded ?? 0} of ${p.planned ?? '?'} samples on ${pageLabel(str(p.page))}`).join('; ')+'.';
   const resourceFindings = new Map<string,{finding:CustomerFinding;resourceUrls:Set<string>}>();
   for (const page of valid) {
@@ -250,7 +255,7 @@ function performance(report: AgentReport, section: CustomerSection): void {
     const lcp=median('largest-contentful-paint'),tbt=median('total-blocking-time'),cls=median('cumulative-layout-shift');
     const pageScore=median('performance-score');
     if (valid.length>1&&pageScore!==undefined) section.metrics.push({label:`${label} performance score`,value:`${Math.round(pageScore)} / 100`,interpretation:'Median Lighthouse lab score; 90 or above is good.',tone:pageScore>=90?'good':'attention'});
-    if (lcp!==undefined) section.metrics.push({label:`${prefix}Main content appears (LCP)`,value:`${(lcp/1000).toFixed(2)} s`,interpretation:`${lcp<=2500?'Within the 2.5-second good reference band':lcp<=4000?'Above the 2.5-second good reference band':'Above the 4-second poor reference boundary'}; ${lcp<2000?'within':'above'} the separate 2-second page-load goal using key-content timing as a proxy.`,tone:lcp<=2500?'good':'attention'});
+    if (lcp!==undefined) section.metrics.push({label:`${prefix}Main content appears (LCP)`,value:`${(lcp/1000).toFixed(2)} s`,interpretation:`${lcp<=2500?'Good - 2.5 s or less':lcp<=4000?'Needs improvement - over 2.5 s':'Poor - over 4 s'}. Your goal: under 2 s.`,tone:lcp<=2500?'good':'attention'});
     if (tbt!==undefined) section.metrics.push({label:`${prefix}Input blocking during load (TBT)`,value:`${Math.round(tbt)} ms`,interpretation:`${tbt<=(label==='Mobile'?200:150)?'Fast':'Needs attention'} for this ${label.toLowerCase()} lab test. This measures blocking during loading.`,tone:tbt<=(label==='Mobile'?200:150)?'good':'attention'});
     if (cls!==undefined) section.metrics.push({label:`${prefix}Visual stability (CLS)`,value:cls<0.001?'< 0.001':String(Number(cls.toFixed(3))),interpretation:cls<=0.1?'Stable in this test; within the good reference band of 0.1 or less.':'Unexpected layout movement exceeded the good reference band of 0.1.',tone:cls<=0.1?'good':'attention'});
     const samples=list(page.samples).map(obj).filter(successfulSample);
@@ -325,7 +330,9 @@ export function buildCustomerReport(reports: AgentReport[], options: {scope?:'al
       section.agentAssessment={label:'Agent assessment',text:assessment.interpretation.text,note:'Agent interpretation of the measured evidence; validate recommendations before acting.'};
     }
     if(report.collectionStatus==='partial') {
-      section.limits=`Some checks could not finish. ${section.limits}`;
+      const renderedPages=id==='seo-ai-search'?unique(report.coverage.filter(c=>c.status!=='complete'&&c.status!=='not-configured'&&/^rendered /.test(c.subject)).map(c=>pageLabel(c.scope.page))):[];
+      const gap=renderedPages.length?`We could not fully check search information after these pages loaded: ${renderedPages.join(', ')}. Details are in technical evidence.`:'Incomplete checks are listed in technical evidence.';
+      section.limits=`${gap} ${section.limits}`;
       if(section.rating.tone==='good') { section.rating={...section.rating,label:'Incomplete assessment',tone:'limited'};section.headline='The completed checks provide useful evidence, but this assessment is incomplete.'; }
     }
     section.images=report.artifacts.filter(a=>/^image\/(png|jpeg)$/.test(a.mediaType)&&/screenshot|page preview/i.test(a.label)).slice(0,2).map(a=>({runId:report.runId,artifactId:a.id,caption:`Page captured during the ${section.agentId==='seo-ai-search'?'SEO & discoverability':section.title.toLowerCase()} review${a.scope?.state==='mobile'?' (mobile)':a.scope?.state==='desktop'?' (desktop)':''}.`}));

@@ -139,7 +139,8 @@ export async function renderCombinedPdf(reports:AgentReport[],options:CustomerPd
   page('Website review');
   text(`${report.targetUrl}  |  ${report.dateLabel}`,10,C.muted,false,18);
   text(report.headline,22,C.ink,true,18);timingChart();verdicts();
-  heading('Start with the customer experience');
+  heading('Start with these priorities');
+  if(perf && report.headline.startsWith('On phones,'))text(report.headline,10,C.ink,true,8);
   const first=report.sections.find(s=>s.agentId==='accessibility')?.findings.filter(f=>f.kind==='finding').slice(0,2)??[];
   for(const item of first)text(`${item.title}. ${item.recommendation}`,10,C.ink,false,8);
   if(!first.length)text(report.nextStep.body,10);
